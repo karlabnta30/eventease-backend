@@ -42,7 +42,7 @@ class AuthController extends Controller
         ]);
 
         try {
-            Mail::to($user->email)->send(new SendOtpMail($otp));
+            Mail::to($user->email)->queue(new SendOtpMail($otp));
         } catch (\Exception $e) {
             Log::error("Failed to send registration OTP email: " . $e->getMessage());
         }
