@@ -41,14 +41,8 @@ class AuthController extends Controller
             'otp_expires_at' => $expiresAt,
         ]);
 
-        try {
-            // Changed from ->queue() to ->send() so it dispatches immediately without needing an active queue worker
-            Mail::to($user->email)->send(new SendOtpMail($otp));
-        } catch (\Exception $e) {
-            Log::error("Failed to send registration OTP email: " . $e->getMessage());
-        }
-
-        // Removed $token generation here so the user cannot log in before verifying their OTP
+        // Temporarily removed try/catch to expose any underlying Brevo/SMTP connection exceptions in Render logs
+        Mail::to($user->email)->send(new SendOtpMail($otp));
 
         return response()->json([
             'message' => 'User registered successfully. Verification OTP sent to email.',
@@ -72,7 +66,6 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        // Optional check: if you want to block login until OTP column is cleared/verified
         if (!is_null($user->otp)) {
             return response()->json([
                 'message' => 'Please verify your email using the OTP sent before logging in.',
@@ -203,12 +196,10 @@ class AuthController extends Controller
             return response()->json(['error' => 'OTP code has expired.'], 400);
         }
 
-        // Clear OTP fields
         $user->otp = null;
         $user->otp_expires_at = null;
         $user->save();
 
-        // Generate token here so user gets logged in right after successful verification
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
