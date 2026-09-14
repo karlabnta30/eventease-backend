@@ -41,11 +41,17 @@ class AuthController extends Controller
             'otp_expires_at' => $expiresAt,
         ]);
 
-        // Temporarily removed try/catch to expose any underlying Brevo/SMTP connection exceptions in Render logs
-        Mail::to($user->email)->send(new SendOtpMail($otp));
+        // Wrapped in try/catch so registration doesn't crash if SMTP fails during your consultation,
+        // while also returning the debug_otp directly in the JSON response so you can see it instantly on screen.
+        try {
+            Mail::to($user->email)->send(new SendOtpMail($otp));
+        } catch (\Exception $e) {
+            Log::error("Failed to send registration OTP email: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'User registered successfully. Verification OTP sent to email.',
+            'debug_otp' => $otp, // <--- This guarantees you can see the OTP right away without waiting for emails
             'user' => $user
         ], 201);
     }
@@ -171,9 +177,16 @@ class AuthController extends Controller
         $user->otp_expires_at = Carbon::now()->addMinutes(10);
         $user->save();
 
-        Mail::to($user->email)->send(new SendOtpMail($otp));
+        try {
+            Mail::to($user->email)->send(new SendOtpMail($otp));
+        } catch (\Exception $e) {
+            Log::error("Failed to send OTP email: " . $e->getMessage());
+        }
 
-        return response()->json(['message' => 'OTP sent successfully to your email address.'], 200);
+        return response()->json([
+            'message' => 'OTP sent successfully to your email address.',
+            'debug_otp' => $otp // Also returned here for backup
+        ], 200);
     }
 
     /**
