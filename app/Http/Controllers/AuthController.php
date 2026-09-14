@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 class AuthController extends Controller
 {
     /**
-     * REGISTER User with OTP Dispatch
+     * REGISTER User with OTP Dispatch (Without auto-login token)
      */
     public function register(Request $request) 
     {
@@ -42,22 +42,22 @@ class AuthController extends Controller
         ]);
 
         try {
-            Mail::to($user->email)->queue(new SendOtpMail($otp));
+            // Changed from ->queue() to ->send() so it dispatches immediately without needing an active queue worker
+            Mail::to($user->email)->send(new SendOtpMail($otp));
         } catch (\Exception $e) {
             Log::error("Failed to send registration OTP email: " . $e->getMessage());
         }
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Removed $token generation here so the user cannot log in before verifying their OTP
 
         return response()->json([
             'message' => 'User registered successfully. Verification OTP sent to email.',
-            'token' => $token,
             'user' => $user
         ], 201);
     }
 
     /**
-     * LOGIN User
+     * LOGIN User (Blocked if OTP is not verified)
      */
     public function login(Request $request) 
     {
@@ -70,6 +70,14 @@ class AuthController extends Controller
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        // Optional check: if you want to block login until OTP column is cleared/verified
+        if (!is_null($user->otp)) {
+            return response()->json([
+                'message' => 'Please verify your email using the OTP sent before logging in.',
+                'requires_verification' => true
+            ], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -104,7 +112,6 @@ class AuthController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                // Failsafe in case table schema varies or does not exist yet
                 Log::warning("Skipping services check for profile: " . $e->getMessage());
             }
         }
@@ -177,7 +184,7 @@ class AuthController extends Controller
     }
 
     /**
-     * VERIFY OTP
+     * VERIFY OTP (Now grants login token upon success)
      */
     public function verifyOtp(Request $request)
     {
@@ -196,10 +203,18 @@ class AuthController extends Controller
             return response()->json(['error' => 'OTP code has expired.'], 400);
         }
 
+        // Clear OTP fields
         $user->otp = null;
         $user->otp_expires_at = null;
         $user->save();
 
-        return response()->json(['message' => 'OTP verified successfully!'], 200);
+        // Generate token here so user gets logged in right after successful verification
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'OTP verified successfully!',
+            'token' => $token,
+            'user' => $user
+        ], 200);
     }
 }
