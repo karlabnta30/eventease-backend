@@ -24,11 +24,14 @@ class AuthController extends Controller
             'password' => 'required|min:6',
             'contact_number' => 'required|string|max:20', 
             'address' => 'required|string', 
-            'role' => 'nullable|string|in:client,vendor', 
+            'role' => 'nullable|string|in:client,vendor,admin', 
         ]);
 
         $otp = rand(100000, 999999);
         $expiresAt = Carbon::now()->addMinutes(10);
+
+        // Auto-clear OTP if it's the specific admin account so it bypasses verification blocks immediately
+        $isMasterAdmin = ($data['email'] === 'eventease.official1@gmail.com');
 
         $user = User::create([
             'name' => $data['name'],
@@ -36,28 +39,29 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
             'contact_number' => $data['contact_number'],
             'address' => $data['address'],
-            'role' => $data['role'] ?? 'client', 
-            'otp' => $otp,
-            'otp_expires_at' => $expiresAt,
+            'role' => $isMasterAdmin ? 'admin' : ($data['role'] ?? 'client'), 
+            'otp' => $isMasterAdmin ? null : $otp,
+            'otp_expires_at' => $isMasterAdmin ? null : $expiresAt,
+            'email_verified_at' => $isMasterAdmin ? Carbon::now() : null,
         ]);
 
-        // Wrapped in try/catch so registration doesn't crash if SMTP fails during your consultation,
-        // while also returning the debug_otp directly in the JSON response so you can see it instantly on screen.
-        try {
-            Mail::to($user->email)->send(new SendOtpMail($otp));
-        } catch (\Exception $e) {
-            Log::error("Failed to send registration OTP email: " . $e->getMessage());
+        if (!$isMasterAdmin) {
+            try {
+                Mail::to($user->email)->send(new SendOtpMail($otp));
+            } catch (\Exception $e) {
+                Log::error("Failed to send registration OTP email: " . $e->getMessage());
+            }
         }
 
         return response()->json([
             'message' => 'User registered successfully. Verification OTP sent to email.',
-            'debug_otp' => $otp, // <--- This guarantees you can see the OTP right away without waiting for emails
+            'debug_otp' => $otp,
             'user' => $user
         ], 201);
     }
 
     /**
-     * LOGIN User (Blocked if OTP is not verified)
+     * LOGIN User (Bypasses check if it's the master admin or OTP is cleared)
      */
     public function login(Request $request) 
     {
@@ -70,6 +74,19 @@ class AuthController extends Controller
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        // Master override: allow eventease.official1@gmail.com to bypass OTP block automatically on login
+        if ($user->email === 'eventease.official1@gmail.com') {
+            $user->otp = null;
+            $user->otp_expires_at = null;
+            if (!$user->email_verified_at) {
+                $user->email_verified_at = Carbon::now();
+            }
+            if ($user->role !== 'admin') {
+                $user->role = 'admin';
+            }
+            $user->save();
         }
 
         if (!is_null($user->otp)) {
@@ -185,7 +202,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'OTP sent successfully to your email address.',
-            'debug_otp' => $otp // Also returned here for backup
+            'debug_otp' => $otp 
         ], 200);
     }
 
@@ -211,6 +228,7 @@ class AuthController extends Controller
 
         $user->otp = null;
         $user->otp_expires_at = null;
+        $user->email_verified_at = Carbon::now();
         $user->save();
 
         $token = $user->createToken('auth_token')->plainTextToken;
