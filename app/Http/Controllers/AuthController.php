@@ -45,16 +45,20 @@ class AuthController extends Controller
             'email_verified_at' => $isMasterAdmin ? Carbon::now() : null,
         ]);
 
+        $mailSent = true;
         if (!$isMasterAdmin) {
             try {
                 Mail::to($user->email)->send(new SendOtpMail($otp));
             } catch (\Exception $e) {
+                $mailSent = false;
                 Log::error("Failed to send registration OTP email: " . $e->getMessage());
             }
         }
 
         return response()->json([
-            'message' => 'User registered successfully. Verification OTP sent to email.',
+            'message' => $mailSent 
+                ? 'User registered successfully. Verification OTP sent to email.' 
+                : 'User registered successfully, but email dispatch failed. Use debug_otp below.',
             'debug_otp' => $otp,
             'user' => $user
         ], 201);
@@ -194,14 +198,16 @@ class AuthController extends Controller
         $user->otp_expires_at = Carbon::now()->addMinutes(10);
         $user->save();
 
+        $mailSent = true;
         try {
             Mail::to($user->email)->send(new SendOtpMail($otp));
         } catch (\Exception $e) {
+            $mailSent = false;
             Log::error("Failed to send OTP email: " . $e->getMessage());
         }
 
         return response()->json([
-            'message' => 'OTP sent successfully to your email address.',
+            'message' => $mailSent ? 'OTP sent successfully to your email address.' : 'Failed to dispatch email, check debug_otp.',
             'debug_otp' => $otp 
         ], 200);
     }
