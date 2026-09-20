@@ -220,15 +220,15 @@ class AuthController extends Controller
     public function verifyOtp(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|exists:users,email',
+            'email' => 'required|email', // Removed strict exists check to avoid 422 mismatch issues
             'otp' => 'required|string'
         ]);
 
         $user = User::where('email', $request->email)->first();
 
         if (!$user || (string) $user->otp !== (string) $request->otp) {
-    return response()->json(['error' => 'Invalid OTP code.'], 400);
-}
+            return response()->json(['error' => 'Invalid OTP code.'], 400);
+        }
 
         if (Carbon::now()->isAfter($user->otp_expires_at)) {
             return response()->json(['error' => 'OTP code has expired.'], 400);
