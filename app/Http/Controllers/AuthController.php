@@ -96,7 +96,9 @@ class AuthController extends Controller
         if (!is_null($user->otp)) {
             return response()->json([
                 'message' => 'Please verify your email using the OTP sent before logging in.',
-                'requires_verification' => true
+                'requires_verification' => true,
+                // Helpful fallback during offline/unstable cloud mail server testing:
+                'debug_otp' => $user->otp 
             ], 403);
         }
 
