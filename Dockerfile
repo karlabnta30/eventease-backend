@@ -1,7 +1,18 @@
 FROM php:8.2-fpm
 
-RUN apt-get update && apt-get install -y libpng-dev libjpeg-dev libfreetype6-dev zip unzip git curl libpq-dev
-RUN docker-php-ext-install pdo pdo_pgsql gd
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    zip \
+    unzip \
+    git \
+    curl \
+    libpq-dev \
+    libsqlite3-dev
+
+# Added pdo_sqlite so Laravel can read/write your SQLite database seamlessly
+RUN docker-php-ext-install pdo pdo_sqlite pdo_pgsql gd
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
@@ -16,4 +27,3 @@ RUN mkdir -p /var/www/html/database \
 
 EXPOSE 10000
 CMD php artisan config:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=10000
-
