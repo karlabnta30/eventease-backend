@@ -20,12 +20,12 @@ COPY . .
 
 RUN composer install --no-dev --optimize-autoloader
 
-RUN mkdir -p /var/www/html/database \
+# Explicitly create database and storage/app/public/permits folders with correct permissions
+RUN mkdir -p /var/www/html/database /var/www/html/storage/app/public/permits \
     && touch /var/www/html/database/database.sqlite \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database \
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
 
 EXPOSE 10000
 
-# Added storage:link here to fix the 500 error on uploaded files
 CMD php artisan config:clear && php artisan migrate --force && php artisan storage:link && php artisan serve --host=0.0.0.0 --port=10000
