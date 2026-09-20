@@ -226,9 +226,9 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || $user->otp !== $request->otp) {
-            return response()->json(['error' => 'Invalid OTP code.'], 400);
-        }
+        if (!$user || (string) $user->otp !== (string) $request->otp) {
+    return response()->json(['error' => 'Invalid OTP code.'], 400);
+}
 
         if (Carbon::now()->isAfter($user->otp_expires_at)) {
             return response()->json(['error' => 'OTP code has expired.'], 400);
