@@ -27,6 +27,10 @@ Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/auth/send-otp', [AuthController::class, 'sendOtp']);
 Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
 
+// Added alias routes to support both frontend API configurations without 404ing:
+Route::post('/send-otp', [AuthController::class, 'sendOtp']);
+Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+
 // --- PASSWORD RESET ROUTES ---
 Route::post('/forgot-password', [PasswordResetController::class, 'sendResetCode']);
 Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']);
