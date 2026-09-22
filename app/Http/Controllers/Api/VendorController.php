@@ -167,7 +167,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload or Update Business Permit from Profile Page (Global Account Level)
+     * Upload or Update Business Permit using Cloudinary
      */
     public function uploadPermit(Request $request)
     {
@@ -179,27 +179,26 @@ class VendorController extends Controller
             $user = Auth::user();
 
             if ($request->hasFile('permit')) {
-                $file = $request->file('permit');
-                $filename = time() . '_' . preg_replace('/\s+/', '_', $file->getClientOriginalName());
-                $path = $file->storeAs('permits', $filename, 'public');
+                // Upload directly to Cloudinary and retrieve the secure HTTPS URL
+                $uploadedFileUrl = $request->file('permit')->storeOnCloudinary('permits')->getSecurePath();
 
                 // Update global permit path and status on the user account
                 DB::table('users')->where('id', $user->id)->update([
-                    'permit_path' => $path,
+                    'permit_path' => $uploadedFileUrl,
                     'verification_status' => 'pending',
                     'updated_at' => now(),
                 ]);
 
                 // Sync status across all existing service rows
                 DB::table('services')->where('user_id', $user->id)->update([
-                    'permit_path' => $path,
+                    'permit_path' => $uploadedFileUrl,
                     'verification_status' => 'pending',
                     'updated_at' => now(),
                 ]);
 
                 return response()->json([
                     'message' => 'Permit uploaded successfully and is pending admin verification.',
-                    'path' => $path
+                    'path' => $uploadedFileUrl
                 ], 200);
             }
 
