@@ -181,7 +181,7 @@ class VendorController extends Controller
             if ($request->hasFile('permit')) {
                 $file = $request->file('permit');
 
-                // Use Laravel's storage driver for Cloudinary safely
+                // Store securely on Cloudinary using standard filesystem driver
                 $path = $file->store('permits', 'cloudinary');
                 $uploadedFileUrl = cloudinary()->getUrl($path);
 
