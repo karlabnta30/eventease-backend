@@ -46,19 +46,23 @@ class AuthController extends Controller
         ]);
 
         $mailSent = true;
+        $errorDetails = null;
+
         if (!$isMasterAdmin) {
             try {
                 Mail::to($user->email)->send(new SendOtpMail($otp));
             } catch (\Exception $e) {
                 $mailSent = false;
-                Log::error("Failed to send registration OTP email: " . $e->getMessage());
+                $errorDetails = $e->getMessage();
+                Log::error("Failed to send registration OTP email: " . $errorDetails);
             }
         }
 
         return response()->json([
             'message' => $mailSent 
                 ? 'User registered successfully. Verification OTP sent to email.' 
-                : 'User registered successfully, but email dispatch failed. Use debug_otp below.',
+                : 'User registered successfully, but email dispatch failed.',
+            'error_details' => $errorDetails,
             'debug_otp' => $otp,
             'user' => $user
         ], 201);
@@ -97,7 +101,6 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Please verify your email using the OTP sent before logging in.',
                 'requires_verification' => true,
-                // Helpful fallback during offline/unstable cloud mail server testing:
                 'debug_otp' => $user->otp 
             ], 403);
         }
@@ -201,15 +204,19 @@ class AuthController extends Controller
         $user->save();
 
         $mailSent = true;
+        $errorDetails = null;
+
         try {
             Mail::to($user->email)->send(new SendOtpMail($otp));
         } catch (\Exception $e) {
             $mailSent = false;
-            Log::error("Failed to send OTP email: " . $e->getMessage());
+            $errorDetails = $e->getMessage();
+            Log::error("Failed to send OTP email: " . $errorDetails);
         }
 
         return response()->json([
-            'message' => $mailSent ? 'OTP sent successfully to your email address.' : 'Failed to dispatch email, check debug_otp.',
+            'message' => $mailSent ? 'OTP sent successfully to your email address.' : 'Failed to dispatch email.',
+            'error_details' => $errorDetails,
             'debug_otp' => $otp 
         ], 200);
     }
@@ -220,7 +227,7 @@ class AuthController extends Controller
     public function verifyOtp(Request $request)
     {
         $request->validate([
-            'email' => 'required|email', // Removed strict exists check to avoid 422 mismatch issues
+            'email' => 'required|email',
             'otp' => 'required|string'
         ]);
 
