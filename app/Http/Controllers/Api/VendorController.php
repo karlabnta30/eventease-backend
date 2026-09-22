@@ -167,7 +167,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload or Update Business Permit using Cloudinary
+     * Upload or Update Business Permit using Cloudinary via Standard Disk Storage
      */
     public function uploadPermit(Request $request)
     {
@@ -179,8 +179,11 @@ class VendorController extends Controller
             $user = Auth::user();
 
             if ($request->hasFile('permit')) {
-                // Upload directly to Cloudinary and retrieve the secure HTTPS URL
-                $uploadedFileUrl = $request->file('permit')->storeOnCloudinary('permits')->getSecurePath();
+                $file = $request->file('permit');
+
+                // Use Laravel's storage driver for Cloudinary safely
+                $path = $file->store('permits', 'cloudinary');
+                $uploadedFileUrl = cloudinary()->getUrl($path);
 
                 // Update global permit path and status on the user account
                 DB::table('users')->where('id', $user->id)->update([
