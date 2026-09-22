@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class VendorController extends Controller
 {
@@ -183,7 +184,7 @@ class VendorController extends Controller
 
                 // Store securely on Cloudinary using standard filesystem driver
                 $path = $file->store('permits', 'cloudinary');
-                $uploadedFileUrl = cloudinary()->getUrl($path);
+                $uploadedFileUrl = Storage::disk('cloudinary')->url($path);
 
                 // Update global permit path and status on the user account
                 DB::table('users')->where('id', $user->id)->update([
