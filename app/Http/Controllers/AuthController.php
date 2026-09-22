@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 class AuthController extends Controller
 {
     /**
-     * REGISTER User with OTP Dispatch (Without auto-login token)
+     * REGISTER User with OTP Dispatch & Master Admin Bypass
      */
     public function register(Request $request) 
     {
@@ -30,7 +30,6 @@ class AuthController extends Controller
         $otp = rand(100000, 999999);
         $expiresAt = Carbon::now()->addMinutes(10);
 
-        // Auto-clear OTP if it's the specific admin account so it bypasses verification blocks immediately
         $isMasterAdmin = ($data['email'] === 'eventease.official1@gmail.com');
 
         $user = User::create([
@@ -58,18 +57,26 @@ class AuthController extends Controller
             }
         }
 
+        // If it's the master admin, automatically generate token to bypass OTP screen on frontend
+        $token = null;
+        if ($isMasterAdmin) {
+            $token = $user->createToken('auth_token')->plainTextToken;
+        }
+
         return response()->json([
-            'message' => $mailSent 
-                ? 'User registered successfully. Verification OTP sent to email.' 
-                : 'User registered successfully, but email dispatch failed.',
+            'message' => $isMasterAdmin 
+                ? 'Master admin registered and signed in automatically.' 
+                : ($mailSent ? 'User registered successfully. Verification OTP sent to email.' : 'User registered successfully, but email dispatch failed.'),
             'error_details' => $errorDetails,
-            'debug_otp' => $otp,
+            'debug_otp' => $isMasterAdmin ? null : $otp,
+            'bypass_otp' => $isMasterAdmin,
+            'token' => $token,
             'user' => $user
         ], 201);
     }
 
     /**
-     * LOGIN User (Bypasses check if it's the master admin or OTP is cleared)
+     * LOGIN User with Master Admin Bypass Support
      */
     public function login(Request $request) 
     {
@@ -84,23 +91,30 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        // Master override: allow eventease.official1@gmail.com to bypass OTP block automatically on login
-        if ($user->email === 'eventease.official1@gmail.com') {
+        $isMasterAdmin = ($user->email === 'eventease.official1@gmail.com');
+
+        if ($isMasterAdmin) {
             $user->otp = null;
             $user->otp_expires_at = null;
-            if (!$user->email_verified_at) {
-                $user->email_verified_at = Carbon::now();
-            }
-            if ($user->role !== 'admin') {
-                $user->role = 'admin';
-            }
+            $user->email_verified_at = $user->email_verified_at ?? Carbon::now();
+            $user->role = 'admin';
             $user->save();
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Master admin login successful',
+                'bypass_otp' => true,
+                'token' => $token,
+                'user' => $user
+            ], 200);
         }
 
         if (!is_null($user->otp)) {
             return response()->json([
                 'message' => 'Please verify your email using the OTP sent before logging in.',
                 'requires_verification' => true,
+                'bypass_otp' => false,
                 'debug_otp' => $user->otp 
             ], 403);
         }
@@ -108,14 +122,15 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Login successful', 
+            'message' => 'Login successful',
+            'bypass_otp' => false,
             'token' => $token, 
             'user' => $user
         ], 200);
     }
 
     /**
-     * GET User Profile with Safe Null-Checks to Avoid 500 Errors
+     * GET User Profile
      */
     public function userProfile(Request $request)
     {
@@ -222,7 +237,7 @@ class AuthController extends Controller
     }
 
     /**
-     * VERIFY OTP (Now grants login token upon success)
+     * VERIFY OTP
      */
     public function verifyOtp(Request $request)
     {
