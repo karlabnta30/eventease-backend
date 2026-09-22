@@ -17,6 +17,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Cloud Filesystem Disk
+    |--------------------------------------------------------------------------
+    |
+    | Many applications store files in the cloud and in local storage. Here
+    | you may specify the default disk for cloud based file storage.
+    |
+    */
+
+    'cloud' => env('FILESYSTEM_CLOUD', 'cloudinary'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -60,7 +72,6 @@ return [
             'report' => false,
         ],
 
-        // Added Cloudinary Driver Disk
         'cloudinary' => [
             'driver' => 'cloudinary',
         ],
