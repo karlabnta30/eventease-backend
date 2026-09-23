@@ -2,12 +2,12 @@
 
 return [
 
-    'default' => env('MAIL_MAILER', 'mailtrap'),
+    'default' => env('MAIL_MAILER', 'resend'),
 
     'mailers' => [
 
-        'mailtrap' => [
-            'transport' => 'mailtrap',
+        'resend' => [
+            'transport' => 'resend',
         ],
 
         'smtp' => [
@@ -34,7 +34,7 @@ return [
     ],
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'noreply@eventeases.com'),
+        'address' => env('MAIL_FROM_ADDRESS', 'onboarding@resend.dev'),
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'EventEase')),
     ],
 
