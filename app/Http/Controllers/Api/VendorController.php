@@ -182,9 +182,8 @@ class VendorController extends Controller
             if ($request->hasFile('permit')) {
                 $file = $request->file('permit');
 
-                // Store securely on Cloudinary using standard filesystem driver
-                $path = $file->store('permits', 'cloudinary');
-                $uploadedFileUrl = Storage::disk('cloudinary')->url($path);
+                // Store securely on Cloudinary using the explicit 'cloudinary' disk
+                $uploadedFileUrl = $file->store('permits', 'cloudinary');
 
                 // Update global permit path and status on the user account
                 DB::table('users')->where('id', $user->id)->update([
