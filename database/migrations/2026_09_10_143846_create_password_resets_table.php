@@ -7,13 +7,14 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        Schema::create('password_resets', function (Blueprint $table) {
-            $table->string('email')->index();
-            $table->string('token');
-            $table->timestamp('created_at')->nullable();
-        });
-    }
+{
+    Schema::create('password_resets', function (Blueprint $table) {
+        $table->id(); // <--- Add this line so it satisfies the primary key rule
+        $table->string('email')->index();
+        $table->string('token');
+        $table->timestamp('created_at')->nullable();
+    });
+}
 
     public function down(): void
     {
