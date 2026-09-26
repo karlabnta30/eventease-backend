@@ -1,7 +1,7 @@
+# FORCE_REBUILD_CACHE_FIX_v2
 FROM php:8.2-apache
 
-# Install system dependencies and PHP extensions needed for Laravel & PostgreSQL
-# Replace pdo_pgsql with pdo_mysql in this line:
+# Install system dependencies and PHP extensions needed for Laravel & MySQL
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
@@ -38,5 +38,5 @@ EXPOSE 80
 # Configure Apache document root to point to Laravel's public folder
 RUN sed -i 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf
 
-# Start Apache
-CMD php artisan config:clear && php artisan migrate:fresh --force && apache2-foreground
+# Start Apache & Migrate
+CMD php artisan config:clear && php artisan migrate --force && apache2-foreground
