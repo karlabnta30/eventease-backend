@@ -21,7 +21,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy project files
+# Copy composer files first to leverage Docker caching
+COPY composer.json composer.lock ./
+
+# Install project dependencies (including packages like Resend if defined in composer.json)
+RUN composer install --no-dev --optimize-autoloader
+
+# Copy the rest of the application files
 COPY . .
 
 # Set permissions for Laravel storage and cache
