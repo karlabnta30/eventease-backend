@@ -9,6 +9,18 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
+    private function getPaymongoKey()
+    {
+        // Fallback check to ensure we never pass null to withBasicAuth
+        $key = env('PAYMONGO_SECRET_KEY') ?? config('services.paymongo.key');
+        
+        if (!$key) {
+            throw new \Exception('PayMongo Secret Key is missing in environment variables.');
+        }
+
+        return trim($key);
+    }
+
     public function createCheckout(Request $request)
     {
         $request->validate([
@@ -17,35 +29,41 @@ class PaymentController extends Controller
             'booking_id' => 'required',
         ]);
 
-        $response = Http::withBasicAuth(env('PAYMONGO_SECRET_KEY'), '')
-            ->post('https://api.paymongo.com/v1/checkout_sessions', [
-                'data' => [
-                    'attributes' => [
-                        'line_items' => [
-                            [
-                                'currency' => 'PHP',
-                                'amount' => intval($request->amount * 100),
-                                'name' => $request->description,
-                                'quantity' => 1
+        try {
+            $secretKey = $this->getPaymongoKey();
+
+            $response = Http::withBasicAuth($secretKey, '')
+                ->post('https://api.paymongo.com/v1/checkout_sessions', [
+                    'data' => [
+                        'attributes' => [
+                            'line_items' => [
+                                [
+                                    'currency' => 'PHP',
+                                    'amount' => intval($request->amount * 100),
+                                    'name' => $request->description,
+                                    'quantity' => 1
+                                ]
+                            ],
+                            'payment_method_types' => ['card', 'gcash', 'paymaya', 'qrph'],
+                            'success_url' => 'http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=' . $request->booking_id,
+                            'cancel_url' => 'http://localhost:5173/payment-cancelled',
+                            'metadata' => [
+                                'booking_id' => (string) $request->booking_id
                             ]
-                        ],
-                        'payment_method_types' => ['card', 'gcash', 'paymaya', 'qrph'],
-                        'success_url' => 'http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=' . $request->booking_id,
-                        'cancel_url' => 'http://localhost:5173/payment-cancelled',
-                        'metadata' => [
-                            'booking_id' => (string) $request->booking_id
                         ]
                     ]
-                ]
-            ]);
+                ]);
 
-        if ($response->failed()) {
-            return response()->json([
-                'error' => $response->json()['errors'][0]['detail'] ?? 'Payment gateway error'
-            ], 400);
+            if ($response->failed()) {
+                return response()->json([
+                    'error' => $response->json()['errors'][0]['detail'] ?? 'Payment gateway error'
+                ], 400);
+            }
+
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
         }
-
-        return response()->json($response->json());
     }
 
     public function verifyPayment(Request $request)
@@ -57,7 +75,9 @@ class PaymentController extends Controller
 
             // If we have a session ID from PayMongo, query PayMongo API to securely retrieve metadata
             if ($sessionId && $sessionId !== 'test_session') {
-                $response = Http::withBasicAuth(env('PAYMONGO_SECRET_KEY'), '')
+                $secretKey = $this->getPaymongoKey();
+
+                $response = Http::withBasicAuth($secretKey, '')
                     ->get("https://api.paymongo.com/v1/checkout_sessions/{$sessionId}");
 
                 if ($response->successful()) {
