@@ -2,7 +2,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Service; // <--- MUST ADD THIS
+use App\Models\Service; 
 use Illuminate\Http\Request;
 
 class ServiceController extends Controller
@@ -27,12 +27,12 @@ class ServiceController extends Controller
             });
         }
 
-        return response()->json($query->where('is_available', true)->get());
+        // Added ->distinct() to prevent duplicate database service entries from replicating
+        return response()->json($query->where('is_available', true)->distinct()->get());
     }
 
     public function store(Request $request)
     {
-        // This fulfills Objective 7: Dashboard Management for Vendors
         $validated = $request->validate([
             'name' => 'required|string',
             'category' => 'required|string',
@@ -41,7 +41,6 @@ class ServiceController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        // Automatically assign the logged-in vendor's ID
         $service = $request->user()->services()->create($validated);
 
         return response()->json($service, 201);
