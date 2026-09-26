@@ -1,16 +1,17 @@
 FROM php:8.2-apache
 
 # Install system dependencies and PHP extensions needed for Laravel & PostgreSQL
+# Replace pdo_pgsql with pdo_mysql in this line:
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
-    libpq-dev \
+    default-libmysqlclient-dev \
     zip \
     unzip \
     git \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_pgsql gd
+    && docker-php-ext-install pdo pdo_mysql gd
 
 # Enable Apache Rewrite Module
 RUN a2enmod rewrite
