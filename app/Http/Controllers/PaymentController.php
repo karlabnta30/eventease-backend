@@ -11,7 +11,6 @@ class PaymentController extends Controller
 {
     private function getPaymongoKey()
     {
-        // Fallback check to ensure we never pass null to withBasicAuth
         $key = env('PAYMONGO_SECRET_KEY') ?? config('services.paymongo.key');
         
         if (!$key) {
@@ -19,6 +18,12 @@ class PaymentController extends Controller
         }
 
         return trim($key);
+    }
+
+    private function getFrontendUrl()
+    {
+        // Dynamically fetch frontend URL from config/env or fallback safely to production domain
+        return rtrim(config('app.frontend_url', env('FRONTEND_URL', 'https://www.eventeases.com')), '/');
     }
 
     public function createCheckout(Request $request)
@@ -31,6 +36,7 @@ class PaymentController extends Controller
 
         try {
             $secretKey = $this->getPaymongoKey();
+            $frontendUrl = $this->getFrontendUrl();
 
             $response = Http::withBasicAuth($secretKey, '')
                 ->post('https://api.paymongo.com/v1/checkout_sessions', [
@@ -45,8 +51,8 @@ class PaymentController extends Controller
                                 ]
                             ],
                             'payment_method_types' => ['card', 'gcash', 'paymaya', 'qrph'],
-                            'success_url' => 'http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=' . $request->booking_id,
-                            'cancel_url' => 'http://localhost:5173/payment-cancelled',
+                            'success_url' => $frontendUrl . '/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=' . $request->booking_id,
+                            'cancel_url' => $frontendUrl . '/payment-cancelled',
                             'metadata' => [
                                 'booking_id' => (string) $request->booking_id
                             ]
