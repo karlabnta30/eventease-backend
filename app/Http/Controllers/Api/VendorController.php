@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class VendorController extends Controller
 {
@@ -43,7 +42,7 @@ class VendorController extends Controller
 
             // Calculate Mini Stats
             $stats = [
-                // FIXED: Revenue now updates based on Payment Status 'Paid'
+                // Revenue updates based on Payment Status 'Paid'
                 'earnings' => Booking::whereIn('service_id', $serviceIds)
                     ->where('payment_status', 'Paid')
                     ->sum('budget'),
@@ -168,7 +167,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload or Update Business Permit using Cloudinary via Standard Disk Storage
+     * Upload or Update Business Permit using Cloudinary Native Helper
      */
     public function uploadPermit(Request $request)
     {
@@ -182,8 +181,12 @@ class VendorController extends Controller
             if ($request->hasFile('permit')) {
                 $file = $request->file('permit');
 
-                // Store securely on Cloudinary using the explicit 'cloudinary' disk
-                $uploadedFileUrl = $file->store('permits', 'cloudinary');
+                // Upload directly using Cloudinary's native helper function
+                $uploadedFileUrl = cloudinary()->upload($file->getRealPath())->getSecureUrl();
+
+                if (!$uploadedFileUrl) {
+                    return response()->json(['error' => 'Cloudinary failed to return a secure URL.'], 500);
+                }
 
                 // Update global permit path and status on the user account
                 DB::table('users')->where('id', $user->id)->update([
@@ -209,7 +212,9 @@ class VendorController extends Controller
 
         } catch (\Exception $e) {
             Log::error("Permit upload error: " . $e->getMessage());
-            return response()->json(['error' => 'Failed to upload permit: ' . $e->getMessage()], 500);
+            return response()->json([
+                'error' => 'Failed to upload permit: ' . $e->getMessage()
+            ], 500);
         }
     }
 }
