@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class VendorController extends Controller
 {
@@ -42,7 +43,6 @@ class VendorController extends Controller
 
             // Calculate Mini Stats
             $stats = [
-                // FIXED: Revenue now updates based on Payment Status 'Paid'
                 'earnings' => Booking::whereIn('service_id', $serviceIds)
                     ->where('payment_status', 'Paid')
                     ->sum('budget'),
@@ -167,7 +167,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload or Update Business Permit with full diagnostic catching
+     * Upload Business Permit directly via Cloudinary REST API (Bypasses package bugs)
      */
     public function uploadPermit(Request $request)
     {
@@ -184,22 +184,52 @@ class VendorController extends Controller
 
             $file = $request->file('permit');
 
-            // Use Cloudinary's native global helper function safely
-            $uploadedFile = cloudinary()->upload($file->getRealPath());
-            $uploadedFileUrl = $uploadedFile ? $uploadedFile->getSecureUrl() : null;
+            // Extract credentials from Render's CLOUDINARY_URL or individual env vars
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            preg_match('/cloudinary:\/\/([^\:]+)\:([^\@]+)\@([^\/\?]+)/', $cloudinaryUrl, $matches);
+            
+            $apiKey    = $matches[1] ?? env('CLOUDINARY_API_KEY');
+            $apiSecret = $matches[2] ?? env('CLOUDINARY_API_SECRET');
+            $cloudName = $matches[3] ?? env('CLOUDINARY_CLOUD_NAME');
 
-            if (!$uploadedFileUrl) {
-                return response()->json(['error' => 'Cloudinary failed to generate a secure URL.'], 500);
+            if (!$apiKey || !$apiSecret || !$cloudName) {
+                return response()->json(['error' => 'Cloudinary environment credentials are missing or malformed.'], 500);
             }
 
-            // Update global permit path and status on the user account
+            $timestamp = time();
+            $signatureString = "timestamp=" . $timestamp . $apiSecret;
+            $signature = sha1($signatureString);
+
+            // Execute direct HTTP multipart upload to Cloudinary API
+            $response = Http::attach(
+                'file', file_get_contents($file->getRealPath()), $file->getClientOriginalName()
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+                'api_key'   => $apiKey,
+                'timestamp' => $timestamp,
+                'signature' => $signature,
+            ]);
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'error_message' => 'Cloudinary API rejection: ' . $response->body()
+                ], 500);
+            }
+
+            $responseData = $response->json();
+            $uploadedFileUrl = $responseData['secure_url'] ?? null;
+
+            if (!$uploadedFileUrl) {
+                return response()->json(['error' => 'Cloudinary responded successfully, but returned no secure URL.'], 500);
+            }
+
+            // Update user account table
             DB::table('users')->where('id', $user->id)->update([
                 'permit_path' => $uploadedFileUrl,
                 'verification_status' => 'pending',
                 'updated_at' => now(),
             ]);
 
-            // Sync status across all existing service rows (Ensures columns exist)
+            // Sync status across all existing service rows
             DB::table('services')->where('user_id', $user->id)->update([
                 'permit_path' => $uploadedFileUrl,
                 'verification_status' => 'pending',
@@ -212,8 +242,7 @@ class VendorController extends Controller
             ], 200);
 
         } catch (\Throwable $e) {
-            // This catches EVERYTHING and outputs the exact problem details to your browser preview
-            Log::error("Permit upload error: " . $e->getMessage() . " on line " . $e->getLine());
+            Log::error("Direct permit upload error: " . $e->getMessage() . " on line " . $e->getLine());
             
             return response()->json([
                 'error_message' => $e->getMessage(),
