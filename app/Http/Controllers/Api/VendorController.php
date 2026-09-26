@@ -42,7 +42,7 @@ class VendorController extends Controller
 
             // Calculate Mini Stats
             $stats = [
-                // Revenue updates based on Payment Status 'Paid'
+                // FIXED: Revenue now updates based on Payment Status 'Paid'
                 'earnings' => Booking::whereIn('service_id', $serviceIds)
                     ->where('payment_status', 'Paid')
                     ->sum('budget'),
@@ -167,53 +167,58 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload or Update Business Permit using Cloudinary Native Helper
+     * Upload or Update Business Permit with full diagnostic catching
      */
     public function uploadPermit(Request $request)
     {
-        $request->validate([
-            'permit' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
-        ]);
-
         try {
+            $request->validate([
+                'permit' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
+            ]);
+
             $user = Auth::user();
 
-            if ($request->hasFile('permit')) {
-                $file = $request->file('permit');
-
-                // Upload directly using Cloudinary's native helper function
-                $uploadedFileUrl = cloudinary()->upload($file->getRealPath())->getSecureUrl();
-
-                if (!$uploadedFileUrl) {
-                    return response()->json(['error' => 'Cloudinary failed to return a secure URL.'], 500);
-                }
-
-                // Update global permit path and status on the user account
-                DB::table('users')->where('id', $user->id)->update([
-                    'permit_path' => $uploadedFileUrl,
-                    'verification_status' => 'pending',
-                    'updated_at' => now(),
-                ]);
-
-                // Sync status across all existing service rows
-                DB::table('services')->where('user_id', $user->id)->update([
-                    'permit_path' => $uploadedFileUrl,
-                    'verification_status' => 'pending',
-                    'updated_at' => now(),
-                ]);
-
-                return response()->json([
-                    'message' => 'Permit uploaded successfully and is pending admin verification.',
-                    'path' => $uploadedFileUrl
-                ], 200);
+            if (!$request->hasFile('permit')) {
+                return response()->json(['error' => 'No file uploaded.'], 400);
             }
 
-            return response()->json(['error' => 'No file uploaded.'], 400);
+            $file = $request->file('permit');
 
-        } catch (\Exception $e) {
-            Log::error("Permit upload error: " . $e->getMessage());
+            // Use Cloudinary's native global helper function safely
+            $uploadedFile = cloudinary()->upload($file->getRealPath());
+            $uploadedFileUrl = $uploadedFile ? $uploadedFile->getSecureUrl() : null;
+
+            if (!$uploadedFileUrl) {
+                return response()->json(['error' => 'Cloudinary failed to generate a secure URL.'], 500);
+            }
+
+            // Update global permit path and status on the user account
+            DB::table('users')->where('id', $user->id)->update([
+                'permit_path' => $uploadedFileUrl,
+                'verification_status' => 'pending',
+                'updated_at' => now(),
+            ]);
+
+            // Sync status across all existing service rows (Ensures columns exist)
+            DB::table('services')->where('user_id', $user->id)->update([
+                'permit_path' => $uploadedFileUrl,
+                'verification_status' => 'pending',
+                'updated_at' => now(),
+            ]);
+
             return response()->json([
-                'error' => 'Failed to upload permit: ' . $e->getMessage()
+                'message' => 'Permit uploaded successfully and is pending admin verification.',
+                'path' => $uploadedFileUrl
+            ], 200);
+
+        } catch (\Throwable $e) {
+            // This catches EVERYTHING and outputs the exact problem details to your browser preview
+            Log::error("Permit upload error: " . $e->getMessage() . " on line " . $e->getLine());
+            
+            return response()->json([
+                'error_message' => $e->getMessage(),
+                'file' => basename($e->getFile()),
+                'line' => $e->getLine()
             ], 500);
         }
     }
