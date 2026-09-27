@@ -9,6 +9,7 @@ use App\Models\Vendor;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class BundleController extends Controller
 {
@@ -59,7 +60,7 @@ class BundleController extends Controller
                 ]);
             }
 
-            // Create the bundle using the dynamic vendor's ID (Never hardcoded to 1)
+            // Create the bundle using the dynamic vendor's ID
             $bundle = Bundle::create([
                 'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
@@ -75,9 +76,14 @@ class BundleController extends Controller
                 'data'    => $bundle->load('services', 'vendor')
             ], 201);
             
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error'    => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Bundle Store Error: " . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
