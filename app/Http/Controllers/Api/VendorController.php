@@ -131,6 +131,27 @@ class VendorController extends Controller
     }
 
     /**
+     * Delete/Destroy a specific service
+     */
+    public function destroyService($id)
+    {
+        try {
+            $service = Vendor::findOrFail($id);
+
+            // Security check: ensure the logged-in vendor owns this service
+            if ($service->user_id !== Auth::id()) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            $service->delete();
+
+            return response()->json(['message' => 'Service deleted successfully'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Service not found or failed to delete: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * For Client Side: Only show available vendors
      */
     public function index()
