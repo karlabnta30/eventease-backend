@@ -27,7 +27,6 @@ class BookingController extends Controller
     public function store(Request $request)
     {
         try {
-            // Made service_id and vendor_id nullable/optional so it never blocks requests if omitted
             $validated = $request->validate([
                 'event_name'  => 'required|string',
                 'location'    => 'required|string',
@@ -64,7 +63,6 @@ class BookingController extends Controller
             $formattedEndTime = $eventDateOnly . ' 23:59:00';
             $formattedStartTime = $request->start_time ? ($eventDateOnly . ' ' . $request->start_time) : ($eventDateOnly . ' 08:00:00');
 
-            // Foolproof fallbacks if vendor_id or service_id are missing/null
             $resolvedVendorId = $request->vendor_id;
             $resolvedBundleId = $request->bundle_id;
             $resolvedServiceId = $request->service_id;
@@ -76,19 +74,16 @@ class BookingController extends Controller
                 }
             }
 
-            // Fallback to first available vendor if none provided
             if (!$resolvedVendorId) {
                 $firstVendor = Vendor::first();
                 $resolvedVendorId = $firstVendor ? $firstVendor->id : 1;
             }
 
-            // Fallback to first available service if none provided
             if (!$resolvedServiceId) {
                 $firstService = DB::table('services')->first();
                 $resolvedServiceId = $firstService ? $firstService->id : null;
             }
 
-            // Fetch the actual price of the service/bundle instead of overriding with the event budget
             $actualServicePrice = null;
             if ($resolvedServiceId) {
                 $serviceRecord = DB::table('services')->where('id', $resolvedServiceId)->first();
@@ -104,7 +99,6 @@ class BookingController extends Controller
                 }
             }
 
-            // Use the actual service price if found, otherwise fallback to the submitted budget
             $finalBookingBudget = $actualServicePrice !== null ? $actualServicePrice : $request->budget;
 
             $bookingData = array_merge($validated, [
@@ -118,14 +112,15 @@ class BookingController extends Controller
                 'guest_count'    => $request->guest_count ?? 1,
                 'start_time'     => $formattedStartTime,
                 'end_time'       => $formattedEndTime,
-                'budget'         => $finalBookingBudget, // Set to actual service price
+                'budget'         => $finalBookingBudget,
             ]);
 
             $booking = Auth::user()->bookings()->create($bookingData);
 
             if ($resolvedVendorId) {
                 $vendorRecord = Vendor::find($resolvedVendorId);
-                if ($vendorRecord && $vendorRecord->user_id) {
+                // FIXED: Prevent self-notification if client is also the vendor
+                if ($vendorRecord && $vendorRecord->user_id && $vendorRecord->user_id !== Auth::id()) {
                     DB::table('notifications')->insert([
                         'user_id'    => $vendorRecord->user_id,
                         'title'      => 'New Booking Request!',
