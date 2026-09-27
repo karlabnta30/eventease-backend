@@ -17,6 +17,11 @@ class BookingController extends Controller
     {
         $bookings = Auth::user()->bookings()
             ->with(['service', 'services', 'user'])
+            ->where(function ($query) {
+                $query->whereNotNull('vendor_id')
+                      ->where('vendor_id', '!=', 0)
+                      ->orWhereNotNull('service_id');
+            })
             ->orderBy('created_at', 'desc')
             ->get();
             
@@ -26,6 +31,7 @@ class BookingController extends Controller
     public function store(Request $request)
     {
         try {
+            // Put the updated validation rules here:
             $validated = $request->validate([
                 'event_name'  => 'required|string',
                 'location'    => 'required|string',
@@ -35,9 +41,9 @@ class BookingController extends Controller
                 'end_time'    => 'nullable|string',
                 'budget'      => 'required|numeric',
                 'guest_count' => 'nullable|integer|min:1|max:500',
-                'service_id'  => 'nullable|integer|exists:services,id', 
+                'service_id'  => 'required|integer|exists:services,id', 
                 'bundle_id'   => 'nullable|integer',
-                'vendor_id'   => 'nullable|integer|exists:vendors,id',
+                'vendor_id'   => 'required|integer|exists:vendors,id',
             ]);
 
             if ($request->filled('guest_count') && $request->filled('category')) {
