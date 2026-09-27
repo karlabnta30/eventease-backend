@@ -19,9 +19,7 @@ class BundleController extends Controller
                 return response()->json([], 200);
             }
 
-            // Fetch bundles with vendor and services relationships
             $bundles = Bundle::with(['vendor', 'services'])->get();
-            
             return response()->json($bundles, 200);
         } catch (\Exception $e) {
             Log::error("Bundle Index Error: " . $e->getMessage());
@@ -37,58 +35,39 @@ class BundleController extends Controller
                 'description' => 'nullable|string',
                 'price'       => 'required|numeric',
                 'services'    => 'required|array',
-                'services.*'  => 'exists:services,id',
-                'vendor_id'   => 'nullable|integer'
+                'services.*'  => 'exists:services,id'
             ]);
 
             $user = $request->user() ?? Auth::user();
-            $finalVendorId = null;
 
-            // 1. Check if vendor_id was passed directly from the frontend request
-            if ($request->filled('vendor_id') && Vendor::where('id', $request->vendor_id)->exists()) {
-                $finalVendorId = $request->vendor_id;
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // 2. If no vendor_id in request, check vendor table using logged-in user ID
-            if (!$finalVendorId && $user) {
-                $vendor = Vendor::where('user_id', $user->id)->first();
-                if ($vendor) {
-                    $finalVendorId = $vendor->id;
-                }
+            // Find the vendor profile linked to this user
+            $vendor = Vendor::where('user_id', $user->id)->first();
+
+            // If no vendor profile exists for this user, create one dynamically
+            if (!$vendor) {
+                $vendor = Vendor::create([
+                    'user_id'        => $user->id,
+                    'business_name'  => $user->name . ' Enterprise',
+                    'category'       => 'General',
+                    'location'       => 'Manila',
+                    'starting_price' => 0,
+                    'is_available'   => true,
+                ]);
             }
 
-            // 3. Fallback: Use the first available vendor in the database if unresolved
-            if (!$finalVendorId) {
-                $firstVendor = Vendor::first();
-                if ($firstVendor) {
-                    $finalVendorId = $firstVendor->id;
-                } else if ($user) {
-                    // Only create a vendor profile if the vendors table is completely empty
-                    $newVendor = Vendor::create([
-                        'user_id'        => $user->id,
-                        'business_name'  => $user->name . ' Business',
-                        'category'       => 'General',
-                        'location'       => 'Manila',
-                        'starting_price' => 0,
-                        'is_available'   => true
-                    ]);
-                    $finalVendorId = $newVendor->id;
-                }
-            }
-
-            if (!$finalVendorId) {
-                return response()->json(['error' => 'No valid vendor record found to associate with this bundle.'], 422);
-            }
-
-            // Create the bundle with a valid vendor_id
+            // Create the bundle using the dynamic vendor's ID (Never hardcoded to 1)
             $bundle = Bundle::create([
-                'vendor_id'   => $finalVendorId,
+                'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
                 'description' => $request->description,
                 'price'       => $request->price,
             ]);
 
-            // Sync pivot table services
+            // Sync the selected services
             $bundle->services()->sync($request->services);
 
             return response()->json([
@@ -98,7 +77,7 @@ class BundleController extends Controller
             
         } catch (\Exception $e) {
             Log::error("Bundle Store Error: " . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json(['error' => $e->getMessage()]);
         }
     }
 
@@ -117,13 +96,11 @@ class BundleController extends Controller
                 return response()->json(['message' => 'Bundle not found'], 404);
             }
 
-            // Verify vendor ownership or admin privilege
             $vendor = Vendor::where('user_id', $user->id)->first();
             if ($vendor && $bundle->vendor_id !== $vendor->id && $user->role !== 'admin') {
                 return response()->json(['error' => 'Unauthorized action.'], 403);
             }
 
-            // Detach pivot relationships before deleting
             $bundle->services()->detach();
             $bundle->delete();
 
