@@ -19,7 +19,7 @@ class BundleController extends Controller
                 return response()->json([], 200);
             }
 
-            // Safely fetch bundles with relationships, ensuring it doesn't crash if a relation is missing
+            // Safely fetch bundles with relationships
             $bundles = Bundle::with(['vendor', 'services'])->get();
             
             return response()->json($bundles, 200);
@@ -46,21 +46,23 @@ class BundleController extends Controller
                 return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // Force lookup or creation based on the actual logged-in user's ID
-            $vendor = Vendor::firstOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'business_name' => $user->name . ' Business',
+            // Look up the vendor profile associated with the authenticated user
+            $vendor = Vendor::where('user_id', $user->id)->first();
+
+            // If the vendor profile doesn't exist, safely create one with unique constraints handled
+            if (!$vendor) {
+                $vendor = Vendor::create([
+                    'user_id' => $user->id,
+                    'business_name' => $user->name . ' Business ' . rand(100, 999),
                     'category' => 'General',
                     'location' => 'Manila',
                     'starting_price' => 0,
                     'is_available' => true
-                ]
-            );
+                ]);
+            }
 
-            // Double check that we have a valid vendor ID
-            if (!$vendor || !$vendor->id) {
-                return response()->json(['error' => 'Failed to resolve vendor profile.'], 500);
+            if (!$vendor || !isset($vendor->id)) {
+                return response()->json(['error' => 'Failed to resolve or create vendor profile.'], 500);
             }
 
             $bundle = Bundle::create([
