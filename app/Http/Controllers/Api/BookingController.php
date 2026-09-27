@@ -42,27 +42,6 @@ class BookingController extends Controller
                 'vendor_id'   => 'nullable|integer',
             ]);
 
-            if ($request->filled('guest_count') && $request->filled('category')) {
-                $categoryRates = [
-                    'Wedding'       => 800,
-                    'Birthday'      => 350,
-                    'Corporate'     => 500,
-                    'Debut'         => 600,
-                    'General Event' => 300,
-                    'Catering'      => 600,
-                ];
-
-                $ratePerPax = $categoryRates[$request->category] ?? 300;
-                $minEstimatedBudget = $request->guest_count * $ratePerPax;
-
-                if ($request->budget < $minEstimatedBudget) {
-                    return response()->json([
-                        'error' => 'Budget Infeasible',
-                        'message' => "The budget (₱" . number_format($request->budget, 2) . ") is below the minimum recommended for {$request->guest_count} guests in {$request->category} (Minimum: ₱" . number_format($minEstimatedBudget, 2) . " based on ₱{$ratePerPax}/head)."
-                    ], 422);
-                }
-            }
-
             if ($request->service_id && $request->start_time && $request->end_time) {
                 $hasConflict = Booking::where('service_id', $request->service_id)
                     ->where('status', 'accepted')
