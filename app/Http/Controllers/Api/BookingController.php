@@ -195,43 +195,7 @@ class BookingController extends Controller
             ]);
 
             if (method_exists($booking, 'services')) {
-                $vendorIds = [];
-                
-                foreach ($validated['services'] as $serviceId) {
-                    $service = DB::table('services')->where('id', $serviceId)->first();
-                    if ($service) {
-                        $vendorId = null;
-                        
-                        if (isset($service->vendor_id) && $service->vendor_id) {
-                            $vendorId = $service->vendor_id;
-                        } elseif (isset($service->user_id)) {
-                            $vendor = DB::table('vendors')->where('user_id', $service->user_id)->first();
-                            $vendorId = $vendor ? $vendor->id : null;
-                        }
-
-                        if (!$vendorId) {
-                            $anyVendor = DB::table('vendors')->first();
-                            $vendorId = $anyVendor ? $anyVendor->id : null;
-                        }
-
-                        if ($vendorId) {
-                            $vendorIds[] = $vendorId;
-                        }
-                    }
-                }
-
-                if (empty($vendorIds)) {
-                    $anyVendor = DB::table('vendors')->first();
-                    if ($anyVendor) {
-                        $vendorIds[] = $anyVendor->id;
-                    }
-                }
-
-                if (!empty($vendorIds)) {
-                    $booking->services()->sync(array_unique($vendorIds));
-                } else {
-                    return response()->json(['error' => 'No valid vendors found in the database to attach.'], 422);
-                }
+                $booking->services()->sync($validated['services']);
             }
 
             return response()->json([
