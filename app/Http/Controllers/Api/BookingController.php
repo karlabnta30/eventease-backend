@@ -195,20 +195,32 @@ class BookingController extends Controller
             ]);
 
             if (method_exists($booking, 'services')) {
-                // Automatically build sync data mapping service_id to its proper vendor_id
                 $syncData = [];
                 foreach ($validated['services'] as $serviceId) {
                     $service = DB::table('services')->where('id', $serviceId)->first();
                     if ($service) {
-                        // Find the vendor associated with this service's user_id, or fallback to default
+                        // Find the vendor associated with this service's user_id
                         $vendor = DB::table('vendors')->where('user_id', $service->user_id)->first();
-                        $vendorId = $vendor ? $vendor->id : ($booking->vendor_id ?? 1);
                         
-                        $syncData[$serviceId] = ['vendor_id' => $vendorId];
+                        if ($vendor) {
+                            $vendorId = $vendor->id;
+                        } else {
+                            // Fallback to the first available vendor in the database instead of hardcoded '1'
+                            $anyVendor = DB::table('vendors')->first();
+                            $vendorId = $anyVendor ? $anyVendor->id : null;
+                        }
+
+                        if ($vendorId) {
+                            $syncData[$serviceId] = ['vendor_id' => $vendorId];
+                        }
                     }
                 }
 
-                $booking->services()->sync($syncData);
+                if (!empty($syncData)) {
+                    $booking->services()->sync($syncData);
+                } else {
+                    return response()->json(['error' => 'No valid vendors found for the selected services.'], 422);
+                }
             }
 
             return response()->json([
