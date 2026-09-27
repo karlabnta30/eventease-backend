@@ -45,7 +45,7 @@ class Booking extends Model
 
     public function services()
     {
-        return $this->belongsToMany(Vendor::class, 'booking_service', 'booking_id', 'vendor_id');
+        return $this->belongsToMany(Service::class, 'booking_service', 'booking_id', 'service_id');
     }
 
     public function user() {
