@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class BookingController extends Controller
 {
@@ -17,11 +18,6 @@ class BookingController extends Controller
     {
         $bookings = Auth::user()->bookings()
             ->with(['service', 'services', 'user'])
-            ->where(function ($query) {
-                $query->whereNotNull('vendor_id')
-                      ->where('vendor_id', '!=', 0)
-                      ->orWhereNotNull('service_id');
-            })
             ->orderBy('created_at', 'desc')
             ->get();
             
@@ -31,7 +27,7 @@ class BookingController extends Controller
     public function store(Request $request)
     {
         try {
-            // Put the updated validation rules here:
+            // Made service_id and vendor_id nullable/optional so it never blocks requests if omitted
             $validated = $request->validate([
                 'event_name'  => 'required|string',
                 'location'    => 'required|string',
@@ -41,9 +37,9 @@ class BookingController extends Controller
                 'end_time'    => 'nullable|string',
                 'budget'      => 'required|numeric',
                 'guest_count' => 'nullable|integer|min:1|max:500',
-                'service_id'  => 'required|integer|exists:services,id', 
+                'service_id'  => 'nullable|integer', 
                 'bundle_id'   => 'nullable|integer',
-                'vendor_id'   => 'required|integer|exists:vendors,id',
+                'vendor_id'   => 'nullable|integer',
             ]);
 
             if ($request->filled('guest_count') && $request->filled('category')) {
@@ -89,8 +85,10 @@ class BookingController extends Controller
             $formattedEndTime = $eventDateOnly . ' 23:59:00';
             $formattedStartTime = $request->start_time ? ($eventDateOnly . ' ' . $request->start_time) : ($eventDateOnly . ' 08:00:00');
 
+            // Foolproof fallbacks if vendor_id or service_id are missing/null
             $resolvedVendorId = $request->vendor_id;
             $resolvedBundleId = $request->bundle_id;
+            $resolvedServiceId = $request->service_id;
 
             if ($resolvedBundleId) {
                 $bundleRecord = DB::table('bundles')->where('id', $resolvedBundleId)->first();
@@ -99,14 +97,26 @@ class BookingController extends Controller
                 }
             }
 
+            // Fallback to first available vendor if none provided
+            if (!$resolvedVendorId) {
+                $firstVendor = Vendor::first();
+                $resolvedVendorId = $firstVendor ? $firstVendor->id : 1;
+            }
+
+            // Fallback to first available service if none provided
+            if (!$resolvedServiceId) {
+                $firstService = DB::table('services')->first();
+                $resolvedServiceId = $firstService ? $firstService->id : null;
+            }
+
             $bookingData = array_merge($validated, [
                 'status'         => $request->status ?? 'pending',
                 'payment_status' => 'Unpaid', 
                 'venue_id'       => $request->venue_id ?? 0,
-                'service_id'     => $request->service_id ?? null,
+                'service_id'     => $resolvedServiceId,
                 'bundle_id'      => $resolvedBundleId,
                 'vendor_id'      => $resolvedVendorId,
-                'category'       => $request->category ?? 'Bundle',
+                'category'       => $request->category ?? 'General Event',
                 'guest_count'    => $request->guest_count ?? 1,
                 'start_time'     => $formattedStartTime,
                 'end_time'       => $formattedEndTime,
@@ -133,6 +143,11 @@ class BookingController extends Controller
                 'data'    => $booking
             ], 201);
 
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Event Store Error: " . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
@@ -161,6 +176,11 @@ class BookingController extends Controller
                 'data'    => $booking
             ], 200);
 
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Event Update Error: " . $e->getMessage());
             return response()->json(['error' => 'Update failed: ' . $e->getMessage()], 500);
@@ -184,6 +204,11 @@ class BookingController extends Controller
                 'data'    => $booking->fresh()
             ], 200);
 
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Bill Adjustment Error: " . $e->getMessage());
             return response()->json(['error' => 'Failed to adjust bill: ' . $e->getMessage()], 500);
@@ -208,6 +233,11 @@ class BookingController extends Controller
                 'message' => 'Services attached successfully!',
                 'data' => $booking->fresh()->load('services')
             ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Attach Services Error: " . $e->getMessage());
             return response()->json(['error' => 'Failed to attach services: ' . $e->getMessage()], 500);
@@ -236,6 +266,11 @@ class BookingController extends Controller
             }
 
             return response()->json(['error' => 'No file uploaded.'], 422);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Attachment Error: " . $e->getMessage());
             return response()->json(['error' => 'File upload failed: ' . $e->getMessage()], 500);
@@ -244,12 +279,12 @@ class BookingController extends Controller
 
     public function processPayment(Request $request)
     {
-        $validated = $request->validate([
-            'booking_id'  => 'required',
-            'amount'      => 'required|numeric'
-        ]);
-
         try {
+            $validated = $request->validate([
+                'booking_id'  => 'required',
+                'amount'      => 'required|numeric'
+            ]);
+
             return DB::transaction(function () use ($request) {
                 $cleanId = $this->cleanId($request->booking_id);
                 $booking = Booking::with('service')->findOrFail($cleanId);
@@ -275,6 +310,11 @@ class BookingController extends Controller
                     'data' => $booking->fresh()
                 ], 200);
             });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation Failed',
+                'messages' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error("Payment Persistence Failure: " . $e->getMessage());
             return response()->json(['error' => 'Transaction failed: ' . $e->getMessage()], 500);
