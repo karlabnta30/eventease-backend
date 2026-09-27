@@ -88,6 +88,25 @@ class BookingController extends Controller
                 $resolvedServiceId = $firstService ? $firstService->id : null;
             }
 
+            // Fetch the actual price of the service/bundle instead of overriding with the event budget
+            $actualServicePrice = null;
+            if ($resolvedServiceId) {
+                $serviceRecord = DB::table('services')->where('id', $resolvedServiceId)->first();
+                if ($serviceRecord && isset($serviceRecord->price)) {
+                    $actualServicePrice = $serviceRecord->price;
+                }
+            }
+
+            if ($actualServicePrice === null && $resolvedBundleId) {
+                $bundleRecord = DB::table('bundles')->where('id', $resolvedBundleId)->first();
+                if ($bundleRecord && isset($bundleRecord->price)) {
+                    $actualServicePrice = $bundleRecord->price;
+                }
+            }
+
+            // Use the actual service price if found, otherwise fallback to the submitted budget
+            $finalBookingBudget = $actualServicePrice !== null ? $actualServicePrice : $request->budget;
+
             $bookingData = array_merge($validated, [
                 'status'         => $request->status ?? 'pending',
                 'payment_status' => 'Unpaid', 
@@ -99,6 +118,7 @@ class BookingController extends Controller
                 'guest_count'    => $request->guest_count ?? 1,
                 'start_time'     => $formattedStartTime,
                 'end_time'       => $formattedEndTime,
+                'budget'         => $finalBookingBudget, // Set to actual service price
             ]);
 
             $booking = Auth::user()->bookings()->create($bookingData);
