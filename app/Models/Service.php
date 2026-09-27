@@ -10,14 +10,23 @@ class Service extends Model
     use HasFactory;
 
     protected $fillable = [
-        'vendor_id',
-        'service_name',
-        'description',
-        'price',
-    ];
+    'user_id',       // <--- Make sure this is here
+    'vendor_id',
+    'name',
+    'description',
+    'price',
+    'category',
+    'location',
+    'is_available',
+];
 
     public function bundles()
     {
         return $this->belongsToMany(Bundle::class, 'bundle_service');
+    }
+
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class);
     }
 }
