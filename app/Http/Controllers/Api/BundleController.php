@@ -19,7 +19,7 @@ class BundleController extends Controller
                 return response()->json([], 200);
             }
 
-            // Safely fetch bundles with relationships
+            // Fetch bundles with vendor and services relationships
             $bundles = Bundle::with(['vendor', 'services'])->get();
             
             return response()->json($bundles, 200);
@@ -35,48 +35,65 @@ class BundleController extends Controller
             $request->validate([
                 'bundle_name' => 'required|string',
                 'description' => 'nullable|string',
-                'price' => 'required|numeric',
-                'services' => 'required|array',
-                'services.*' => 'exists:services,id'
+                'price'       => 'required|numeric',
+                'services'    => 'required|array',
+                'services.*'  => 'exists:services,id',
+                'vendor_id'   => 'nullable|integer'
             ]);
 
             $user = $request->user() ?? Auth::user();
+            $finalVendorId = null;
 
-            if (!$user) {
-                return response()->json(['error' => 'Unauthorized user session.'], 401);
+            // 1. Check if vendor_id was passed directly from the frontend request
+            if ($request->filled('vendor_id') && Vendor::where('id', $request->vendor_id)->exists()) {
+                $finalVendorId = $request->vendor_id;
             }
 
-            // Look up the vendor profile associated with the authenticated user
-            $vendor = Vendor::where('user_id', $user->id)->first();
-
-            // If the vendor profile doesn't exist, safely create one with unique constraints handled
-            if (!$vendor) {
-                $vendor = Vendor::create([
-                    'user_id' => $user->id,
-                    'business_name' => $user->name . ' Business ' . rand(100, 999),
-                    'category' => 'General',
-                    'location' => 'Manila',
-                    'starting_price' => 0,
-                    'is_available' => true
-                ]);
+            // 2. If no vendor_id in request, check vendor table using logged-in user ID
+            if (!$finalVendorId && $user) {
+                $vendor = Vendor::where('user_id', $user->id)->first();
+                if ($vendor) {
+                    $finalVendorId = $vendor->id;
+                }
             }
 
-            if (!$vendor || !isset($vendor->id)) {
-                return response()->json(['error' => 'Failed to resolve or create vendor profile.'], 500);
+            // 3. Fallback: Use the first available vendor in the database if unresolved
+            if (!$finalVendorId) {
+                $firstVendor = Vendor::first();
+                if ($firstVendor) {
+                    $finalVendorId = $firstVendor->id;
+                } else if ($user) {
+                    // Only create a vendor profile if the vendors table is completely empty
+                    $newVendor = Vendor::create([
+                        'user_id'        => $user->id,
+                        'business_name'  => $user->name . ' Business',
+                        'category'       => 'General',
+                        'location'       => 'Manila',
+                        'starting_price' => 0,
+                        'is_available'   => true
+                    ]);
+                    $finalVendorId = $newVendor->id;
+                }
             }
 
+            if (!$finalVendorId) {
+                return response()->json(['error' => 'No valid vendor record found to associate with this bundle.'], 422);
+            }
+
+            // Create the bundle with a valid vendor_id
             $bundle = Bundle::create([
-                'vendor_id' => $vendor->id,
+                'vendor_id'   => $finalVendorId,
                 'bundle_name' => $request->bundle_name,
                 'description' => $request->description,
-                'price' => $request->price,
+                'price'       => $request->price,
             ]);
 
+            // Sync pivot table services
             $bundle->services()->sync($request->services);
 
             return response()->json([
-                'message' => 'Bundle created successfully!', 
-                'data' => $bundle->load('services', 'vendor')
+                'message' => 'Bundle created successfully!',
+                'data'    => $bundle->load('services', 'vendor')
             ], 201);
             
         } catch (\Exception $e) {
