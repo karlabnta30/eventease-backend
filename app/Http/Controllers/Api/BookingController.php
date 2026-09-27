@@ -67,7 +67,7 @@ class BookingController extends Controller
                     ->whereDate('event_date', $request->event_date)
                     ->where(function ($query) use ($request) {
                         $query->where('start_time', '<', $request->end_time)
-                              ->where('end_time', '>', $request->start_time);
+                            ->where('end_time', '>', $request->start_time);
                     })
                     ->exists();
 
@@ -161,7 +161,6 @@ class BookingController extends Controller
         }
     }
 
-    // Bill adjustment method for Phase 4 final pricing negotiations
     public function adjustBill(Request $request, $id)
     {
         try {
@@ -191,12 +190,25 @@ class BookingController extends Controller
             $booking = Booking::findOrFail($this->cleanId($id));
             
             $validated = $request->validate([
-                'services' => 'required|array',
+                'services'   => 'required|array',
                 'services.*' => 'required|integer|exists:services,id'
             ]);
 
             if (method_exists($booking, 'services')) {
-                $booking->services()->sync($validated['services']);
+                // Automatically build sync data mapping service_id to its proper vendor_id
+                $syncData = [];
+                foreach ($validated['services'] as $serviceId) {
+                    $service = DB::table('services')->where('id', $serviceId)->first();
+                    if ($service) {
+                        // Find the vendor associated with this service's user_id, or fallback to default
+                        $vendor = DB::table('vendors')->where('user_id', $service->user_id)->first();
+                        $vendorId = $vendor ? $vendor->id : ($booking->vendor_id ?? 1);
+                        
+                        $syncData[$serviceId] = ['vendor_id' => $vendorId];
+                    }
+                }
+
+                $booking->services()->sync($syncData);
             }
 
             return response()->json([
@@ -209,7 +221,6 @@ class BookingController extends Controller
         }
     }
     
-    // Safely handles document and photo file attachments up to 5MB without database structure risks
     public function attachDocument(Request $request, $id)
     {
         try {
@@ -223,7 +234,6 @@ class BookingController extends Controller
                 $file = $request->file('attachment');
                 $filename = time() . '_' . preg_replace('/\s+/', '_', $file->getClientOriginalName());
                 
-                // Move file to public/uploads
                 $file->move(public_path('uploads'), $filename);
 
                 return response()->json([
