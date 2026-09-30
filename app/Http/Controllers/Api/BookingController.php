@@ -39,6 +39,7 @@ class BookingController extends Controller
                 'service_id'  => 'nullable|integer', 
                 'bundle_id'   => 'nullable|integer',
                 'vendor_id'   => 'nullable|integer',
+                'venue_id'    => 'nullable|integer',
             ]);
 
             if ($request->service_id && $request->start_time && $request->end_time) {
