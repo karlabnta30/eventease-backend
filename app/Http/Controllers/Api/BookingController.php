@@ -67,44 +67,35 @@ class BookingController extends Controller
             $resolvedBundleId = $request->bundle_id;
             $resolvedServiceId = $request->service_id;
 
+            $actualPrice = null;
+
+            // Prioritize Bundle pricing and vendor resolution if a bundle is selected
             if ($resolvedBundleId) {
                 $bundleRecord = DB::table('bundles')->where('id', $resolvedBundleId)->first();
-                if ($bundleRecord && isset($bundleRecord->vendor_id)) {
-                    $resolvedVendorId = $bundleRecord->vendor_id;
+                if ($bundleRecord) {
+                    if (isset($bundleRecord->vendor_id)) {
+                        $resolvedVendorId = $bundleRecord->vendor_id;
+                    }
+                    if (isset($bundleRecord->price)) {
+                        $actualPrice = $bundleRecord->price;
+                    }
                 }
             }
 
-            if (!$resolvedVendorId) {
-                $firstVendor = Vendor::first();
-                $resolvedVendorId = $firstVendor ? $firstVendor->id : 1;
-            }
-
-            if (!$resolvedServiceId) {
-                $firstService = DB::table('services')->first();
-                $resolvedServiceId = $firstService ? $firstService->id : null;
-            }
-
-            $actualServicePrice = null;
-            if ($resolvedServiceId) {
+            // Fallback to Service pricing if no bundle price was found
+            if ($actualPrice === null && $resolvedServiceId) {
                 $serviceRecord = DB::table('services')->where('id', $resolvedServiceId)->first();
                 if ($serviceRecord && isset($serviceRecord->price)) {
-                    $actualServicePrice = $serviceRecord->price;
+                    $actualPrice = $serviceRecord->price;
                 }
             }
 
-            if ($actualServicePrice === null && $resolvedBundleId) {
-                $bundleRecord = DB::table('bundles')->where('id', $resolvedBundleId)->first();
-                if ($bundleRecord && isset($bundleRecord->price)) {
-                    $actualServicePrice = $bundleRecord->price;
-                }
-            }
-
-            $finalBookingBudget = $actualServicePrice !== null ? $actualServicePrice : $request->budget;
+            $finalBookingBudget = $actualPrice !== null ? $actualPrice : $request->budget;
 
             $bookingData = array_merge($validated, [
                 'status'         => $request->status ?? 'pending',
                 'payment_status' => 'Unpaid', 
-                'venue_id'       => $request->venue_id ?? 0,
+                'venue_id'       => $request->venue_id ?? null,
                 'service_id'     => $resolvedServiceId,
                 'bundle_id'      => $resolvedBundleId,
                 'vendor_id'      => $resolvedVendorId,
@@ -119,7 +110,6 @@ class BookingController extends Controller
 
             if ($resolvedVendorId) {
                 $vendorRecord = Vendor::find($resolvedVendorId);
-                // FIXED: Prevent self-notification if client is also the vendor
                 if ($vendorRecord && $vendorRecord->user_id && $vendorRecord->user_id !== Auth::id()) {
                     DB::table('notifications')->insert([
                         'user_id'    => $vendorRecord->user_id,
