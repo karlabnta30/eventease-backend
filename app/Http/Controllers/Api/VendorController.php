@@ -32,16 +32,13 @@ class VendorController extends Controller
     public function myBookings()
     {
         try {
-            // Get all services owned by this user
             $serviceIds = Vendor::where('user_id', Auth::id())->pluck('id');
 
-            // Fetch bookings linked to those services
             $bookings = Booking::whereIn('service_id', $serviceIds)
                 ->with('user')
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Calculate Mini Stats
             $stats = [
                 'earnings' => Booking::whereIn('service_id', $serviceIds)
                     ->where('payment_status', 'Paid')
@@ -83,20 +80,19 @@ class VendorController extends Controller
     }
 
     /**
-     * Store a new service (Gated by Account Verification Status)
+     * Store a new service (Gated by Account Verification Status & Permit Upload)
      */
     public function storeService(Request $request)
     {
         try {
             $user = Auth::user();
 
-            // Check if vendor account is verified globally
-            $isVerified = $user->verification_status === 'verified' || 
-                          DB::table('services')->where('user_id', $user->id)->where('verification_status', 'verified')->exists();
-
-            if (!$isVerified) {
+            // 1. MAHIGPIT NA SECURITY: Bawal mag-add ng service kung walang permit o hindi verified
+            $userRecord = DB::table('users')->where('id', $user->id)->first();
+            
+            if (empty($userRecord->permit_path) || $userRecord->verification_status !== 'verified') {
                 return response()->json([
-                    'error' => 'Only verified vendors are allowed to add a service. Please wait for admin permit approval.'
+                    'error' => 'Access Denied: You must upload a valid business permit and wait for admin verification before posting a service.'
                 ], 403);
             }
 
@@ -122,6 +118,7 @@ class VendorController extends Controller
                 'is_available'         => true,
                 'service_fee'          => 0.00, 
                 'verification_status'  => 'verified',
+                'permit_path'          => $userRecord->permit_path,
             ]);
 
             return response()->json(['message' => 'Service published!', 'data' => $vendor], 201);
@@ -138,7 +135,6 @@ class VendorController extends Controller
         try {
             $service = Vendor::findOrFail($id);
 
-            // Security check: ensure the logged-in vendor owns this service
             if ($service->user_id !== Auth::id()) {
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
@@ -176,7 +172,6 @@ class VendorController extends Controller
     {
         $service = Vendor::findOrFail($id);
         
-        // Security check: ensure the logged-in vendor owns this service
         if ($service->user_id !== Auth::id()) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -188,7 +183,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Upload Business Permit directly via Cloudinary REST API (Bypasses package bugs)
+     * Upload Business Permit directly via Cloudinary REST API
      */
     public function uploadPermit(Request $request)
     {
@@ -205,7 +200,6 @@ class VendorController extends Controller
 
             $file = $request->file('permit');
 
-            // Extract credentials from Render's CLOUDINARY_URL or individual env vars
             $cloudinaryUrl = env('CLOUDINARY_URL');
             preg_match('/cloudinary:\/\/([^\:]+)\:([^\@]+)\@([^\/\?]+)/', $cloudinaryUrl, $matches);
             
@@ -221,7 +215,6 @@ class VendorController extends Controller
             $signatureString = "timestamp=" . $timestamp . $apiSecret;
             $signature = sha1($signatureString);
 
-            // Execute direct HTTP multipart upload to Cloudinary API
             $response = Http::attach(
                 'file', file_get_contents($file->getRealPath()), $file->getClientOriginalName()
             )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
@@ -243,14 +236,12 @@ class VendorController extends Controller
                 return response()->json(['error' => 'Cloudinary responded successfully, but returned no secure URL.'], 500);
             }
 
-            // Update user account table
             DB::table('users')->where('id', $user->id)->update([
                 'permit_path' => $uploadedFileUrl,
                 'verification_status' => 'pending',
                 'updated_at' => now(),
             ]);
 
-            // Sync status across all existing service rows
             DB::table('services')->where('user_id', $user->id)->update([
                 'permit_path' => $uploadedFileUrl,
                 'verification_status' => 'pending',
