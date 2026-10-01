@@ -65,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // --- MESSAGING & CONTACT LIST ROUTES ---
     Route::get('/messages/{userId}', [MessageController::class, 'getConversation']);
     Route::post('/messages', [MessageController::class, 'sendMessage']);
+    // Idinagdag para maiwasan ang 404 error sa file upload kapag walang active booking:
+    Route::post('/messages/upload', [MessageController::class, 'uploadFile']); 
     Route::get('/contacts-list', [MessageController::class, 'getContacts']);
     Route::get('/users-list', function() {
         return response()->json(\App\Models\User::where('id', '!=', auth()->id())->get());
