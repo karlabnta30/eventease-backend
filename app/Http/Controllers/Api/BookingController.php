@@ -70,7 +70,6 @@ class BookingController extends Controller
 
             $actualPrice = null;
 
-            // Prioritize Bundle pricing and vendor resolution if a bundle is selected
             if ($resolvedBundleId) {
                 $bundleRecord = DB::table('bundles')->where('id', $resolvedBundleId)->first();
                 if ($bundleRecord) {
@@ -83,7 +82,6 @@ class BookingController extends Controller
                 }
             }
 
-            // Fallback to Service pricing if no bundle price was found
             if ($actualPrice === null && $resolvedServiceId) {
                 $serviceRecord = DB::table('services')->where('id', $resolvedServiceId)->first();
                 if ($serviceRecord && isset($serviceRecord->price)) {
@@ -145,13 +143,13 @@ class BookingController extends Controller
             $booking = Booking::findOrFail($this->cleanId($id));
 
             $validated = $request->validate([
-                'event_name'  => 'sometimes|required|string',
-                'location'    => 'sometimes|required|string',
-                'event_date'  => 'sometimes|required|date',
+                'event_name'  => 'sometimes|string',
+                'location'    => 'sometimes|string',
+                'event_date'  => 'sometimes|date',
                 'start_time'  => 'sometimes|nullable|string', 
-                'end_time'    => 'sometimes|required|string',
-                'budget'      => 'sometimes|required|numeric',
-                'guest_count' => 'sometimes|required|integer',
+                'end_time'    => 'sometimes|string',
+                'budget'      => 'sometimes|numeric',
+                'guest_count' => 'sometimes|integer',
             ]);
 
             $booking->update($validated);
@@ -378,16 +376,16 @@ class BookingController extends Controller
     {
         try {
             $booking = Booking::findOrFail($this->cleanId($id));
-            $targetServiceId = $request->vendor_id;
+            $targetVendorId = $request->vendor_id;
 
-            $service = Vendor::findOrFail($targetServiceId);
+            $vendor = Vendor::findOrFail($targetVendorId);
 
-            $booking->service_id = $targetServiceId;
+            $booking->vendor_id = $targetVendorId;
             $booking->status = 'pending'; 
             $booking->save();
 
             DB::table('notifications')->insert([
-                'user_id'    => $service->user_id, 
+                'user_id'    => $vendor->user_id, 
                 'title'      => 'New Hire Request!',
                 'message'    => 'You have been hired for event: ' . $booking->event_name . '. Check your dashboard to accept.',
                 'is_read'    => 0, 

@@ -90,9 +90,11 @@ class AdminController extends Controller
     public function getVendorsForVerification()
     {
         try {
-            // Fetch all vendor accounts cleanly from users table with leftJoin to handle users with or without services
+            // I-filter natin para makuha lamang ang mga may permit_path na hindi null o blangko
             $vendors = DB::table('users')
                 ->where('users.role', 'vendor')
+                ->whereNotNull('users.permit_path')
+                ->where('users.permit_path', '!=', '')
                 ->leftJoin('services', 'users.id', '=', 'services.user_id')
                 ->select(
                     'users.id', 
