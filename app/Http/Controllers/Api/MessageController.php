@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Vendor;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class MessageController extends Controller
 {
@@ -123,6 +124,62 @@ class MessageController extends Controller
         ]);
 
         return response()->json(['success' => true, 'message' => $message]);
+    }
+
+    // Direct File Upload para sa Messaging
+    public function uploadFile(Request $request)
+    {
+        try {
+            $request->validate([
+                'attachment' => 'required|file|mimes:jpeg,png,jpg,pdf,webp|max:5120',
+            ]);
+
+            if (!$request->hasFile('attachment')) {
+                return response()->json(['error' => 'No file uploaded.'], 400);
+            }
+
+            $file = $request->file('attachment');
+
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            preg_match('/cloudinary:\/\/([^\:]+)\:([^\@]+)\@([^\/\?]+)/', $cloudinaryUrl, $matches);
+            
+            $apiKey    = $matches[1] ?? env('CLOUDINARY_API_KEY');
+            $apiSecret = $matches[2] ?? env('CLOUDINARY_API_SECRET');
+            $cloudName = $matches[3] ?? env('CLOUDINARY_CLOUD_NAME');
+
+            if (!$apiKey || !$apiSecret || !$cloudName) {
+                return response()->json(['error' => 'Cloudinary credentials missing.'], 500);
+            }
+
+            $timestamp = time();
+            $signatureString = "timestamp=" . $timestamp . $apiSecret;
+            $signature = sha1($signatureString);
+
+            $response = Http::attach(
+                'file', file_get_contents($file->getRealPath()), $file->getClientOriginalName()
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/auto/upload", [
+                'api_key'   => $apiKey,
+                'timestamp' => $timestamp,
+                'signature' => $signature,
+            ]);
+
+            if (!$response->successful()) {
+                return response()->json(['error' => 'Cloudinary upload rejected: ' . $response->body()], 500);
+            }
+
+            $responseData = $response->json();
+            $secureUrl = $responseData['secure_url'] ?? null;
+
+            if (!$secureUrl) {
+                return response()->json(['error' => 'Cloudinary did not return a secure URL.'], 500);
+            }
+
+            return response()->json(['file_url' => $secureUrl], 200);
+
+        } catch (\Exception $e) {
+            Log::error("Message File Upload Error: " . $e->getMessage());
+            return response()->json(['error' => 'Upload failed: ' . $e->getMessage()], 500);
+        }
     }
 
     // Return contacts sharing a booking relationship
