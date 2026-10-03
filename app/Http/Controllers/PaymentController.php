@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\PaymentReceiptMail;
 
 class PaymentController extends Controller
 {
@@ -103,6 +105,9 @@ class PaymentController extends Controller
 
             $cleanBookingId = intval(explode(':', $bookingId)[0]);
 
+            // Kunin ang booking details at user info para sa resibo bago i-update
+            $booking = DB::table('bookings')->where('id', $cleanBookingId)->first();
+
             // Direct database update to guarantee execution
             $updated = DB::table('bookings')
                 ->where('id', $cleanBookingId)
@@ -113,7 +118,25 @@ class PaymentController extends Controller
                 ]);
 
             if ($updated) {
-                return response()->json(['success' => true, 'message' => 'Booking updated to Paid successfully.']);
+                // Magpadala ng email receipt kapag na-update na sa Paid
+                if ($booking) {
+                    $user = DB::table('users')->where('id', $booking->user_id)->first();
+                    
+                    if ($user && !empty($user->email)) {
+                        try {
+                            Mail::to($user->email)->send(new PaymentReceiptMail([
+                                'customer_name' => $user->name,
+                                'service_name' => $booking->event_name ?? 'Event Booking Service',
+                                'amount' => $booking->budget ?? 0,
+                                'transaction_id' => $sessionId !== 'test_session' ? $sessionId : 'EVT-' . time()
+                            ]));
+                        } catch (\Exception $mailEx) {
+                            Log::error('Payment Receipt Email Error: ' . $mailEx.getMessage());
+                        }
+                    }
+                }
+
+                return response()->json(['success' => true, 'message' => 'Booking updated to Paid successfully and receipt sent.']);
             }
 
             return response()->json(['error' => 'Booking ID not found in database.'], 404);
