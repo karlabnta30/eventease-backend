@@ -76,7 +76,7 @@ class AuthController extends Controller
     }
 
     /**
-     * LOGIN User with Master Admin Bypass Support
+     * LOGIN User with Master Admin Bypass Support & Unverified Auto-Resend OTP
      */
     public function login(Request $request) 
     {
@@ -110,12 +110,25 @@ class AuthController extends Controller
             ], 200);
         }
 
-        if (!is_null($user->otp)) {
+        // Check if user is unverified (has an active/pending OTP)
+        if (!is_null($user->otp) || is_null($user->email_verified_at)) {
+            // Generate a fresh OTP so they can proceed right away even if they exited earlier
+            $newOtp = rand(100000, 999999);
+            $user->otp = $newOtp;
+            $user->otp_expires_at = Carbon::now()->addMinutes(10);
+            $user->save();
+
+            try {
+                Mail::to($user->email)->send(new SendOtpMail($newOtp));
+            } catch (\Exception $e) {
+                Log::error("Failed to resend login OTP email: " . $e->getMessage());
+            }
+
             return response()->json([
-                'message' => 'Please verify your email using the OTP sent before logging in.',
+                'message' => 'Your account is unverified. A new OTP has been sent to your email.',
                 'requires_verification' => true,
                 'bypass_otp' => false,
-                'debug_otp' => $user->otp 
+                'debug_otp' => $newOtp 
             ], 403);
         }
 
