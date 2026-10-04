@@ -82,10 +82,23 @@ class BookingController extends Controller
                 }
             }
 
-            if ($actualPrice === null && $resolvedServiceId) {
+            if ($resolvedServiceId) {
                 $serviceRecord = DB::table('services')->where('id', $resolvedServiceId)->first();
-                if ($serviceRecord && isset($serviceRecord->price)) {
-                    $actualPrice = $serviceRecord->price;
+                if ($serviceRecord) {
+                    if (isset($serviceRecord->price) && $actualPrice === null) {
+                        $actualPrice = $serviceRecord->price;
+                    }
+                    // Awtomatikong kunin ang vendor_id mula sa service kung wala pa
+                    if (!$resolvedVendorId) {
+                        if (isset($serviceRecord->vendor_id)) {
+                            $resolvedVendorId = $serviceRecord->vendor_id;
+                        } elseif (isset($serviceRecord->user_id)) {
+                            $matchingVendor = Vendor::where('user_id', $serviceRecord->user_id)->first();
+                            if ($matchingVendor) {
+                                $resolvedVendorId = $matchingVendor->id;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -332,7 +345,12 @@ class BookingController extends Controller
                 ], 200);
             }
 
-            $serviceIds = DB::table('services')->where('user_id', $userId)->pluck('id');
+            // Kunin ang service IDs gamit ang parehong user_id o vendor_id
+            $serviceIds = DB::table('services')
+                ->where('user_id', $userId)
+                ->orWhereIn('vendor_id', $vendorIds)
+                ->pluck('id');
+
             $bundleIds = DB::table('bundles')->whereIn('vendor_id', $vendorIds)->pluck('id');
 
             $bookings = Booking::with(['user', 'services', 'service'])
@@ -346,8 +364,9 @@ class BookingController extends Controller
                     if ($bundleIds->isNotEmpty() && Schema::hasColumn('bookings', 'bundle_id')) {
                         $query->orWhereIn('bundle_id', $bundleIds);
                     }
-                    $query->orWhereHas('services', function($q) use ($vendorIds) {
-                        $q->whereIn('vendor_id', $vendorIds);
+                    $query->orWhereHas('services', function($q) use ($vendorIds, $serviceIds) {
+                        $q->whereIn('vendor_id', $vendorIds)
+                          ->orWhereIn('services.id', $serviceIds);
                     });
                 })
                 ->orderBy('created_at', 'desc')
