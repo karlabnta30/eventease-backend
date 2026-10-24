@@ -30,15 +30,23 @@ class BudgetOptimizerController extends Controller
 
         $breakdown = [];
         foreach ($allocations as $item => $percentage) {
+            $recommendedAmount = round($budget * $percentage, 2);
             $breakdown[] = [
                 'item' => $item,
-                'recommended_amount' => round($budget * $percentage, 2),
+                'recommended_amount' => $recommendedAmount,
                 'percentage' => ($percentage * 100) . '%'
             ];
         }
 
-        // Cost efficiency analysis
-        $categoryRates = ['Wedding' => 800, 'Birthday' => 350, 'Corporate' => 500, 'Workshop' => 300, 'Debut' => 600];
+        // Cost efficiency analysis baseline rates per pax
+        $categoryRates = [
+            'Wedding' => 800, 
+            'Birthday' => 350, 
+            'Corporate' => 500, 
+            'Workshop' => 300, 
+            'Debut' => 600
+        ];
+        
         $minPerPax = $categoryRates[$category] ?? 300;
         $recommendedMinTotal = $pax * $minPerPax;
 
@@ -47,7 +55,12 @@ class BudgetOptimizerController extends Controller
 
         if ($budget < $recommendedMinTotal) {
             $status = 'Infeasible';
-            $message = "Warning: Your budget is lower than the recommended baseline (₱" . number_format($recommendedMinTotal, 2) . ") for {$pax} guests.";
+            $message = "Warning: Your target budget (₱" . number_format($budget, 2) . ") is lower than the recommended baseline (₱" . number_format($recommendedMinTotal, 2) . ") for {$pax} guests. Consider scaling down the guest count or prioritizing core essentials.";
+        } else {
+            $surplus = $budget - $recommendedMinTotal;
+            if ($surplus > 0) {
+                $message = "Optimal! You have a surplus/contingency buffer of ₱" . number_format($surplus, 2) . " which can be allocated to luxury add-ons or premium upgrades.";
+            }
         }
 
         return response()->json([
