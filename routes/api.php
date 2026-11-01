@@ -38,6 +38,9 @@ Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']
 // --- PUBLIC BUNDLE CATALOG ROUTE ---
 Route::get('/bundles', [BundleController::class, 'index']);
 
+// --- PUBLIC SERVICE CATALOG ROUTE (Added) ---
+Route::get('/services', [ServiceController::class, 'publicIndex']);
+
 // --- PUBLIC PAYMENT VERIFICATION ROUTE ---
 Route::post('/verify-payment', [PaymentController::class, 'verifyPayment']);
 
