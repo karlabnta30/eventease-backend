@@ -4,21 +4,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Service; // Siguraduhing na-import ang Service model mo
+use App\Models\Service;
+use Illuminate\Support\Facades\Schema;
 
-class ServiceController extends Controller
+class PublicCatalogController extends Controller
 {
-    /**
-     * Display a listing of the services for the public catalog.
-     */
-    public function publicIndex()
+    public function index()
     {
         try {
-            // Kunin ang mga serbisyo na active o verified mula sa Aiven DB
-            $services = Service::with('vendor')
-                ->where('status', 'active')
-                ->latest()
-                ->get();
+            $query = Service::with('vendor');
+            
+            // Sinisiguro nitong hindi magka-crash kung may o walang 'status' column sa database
+            if (Schema::hasColumn('services', 'status')) {
+                $query->where('status', 'active');
+            }
+
+            $services = $query->latest()->get();
 
             return response()->json([
                 'success' => true,
@@ -27,7 +28,7 @@ class ServiceController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch public services.',
+                'message' => 'Failed to fetch public catalog data.',
                 'error' => $e->getMessage()
             ], 500);
         }
