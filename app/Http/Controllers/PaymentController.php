@@ -24,7 +24,6 @@ class PaymentController extends Controller
 
     private function getFrontendUrl()
     {
-        // Dynamically fetch frontend URL from config/env or fallback safely to production domain
         return rtrim(config('app.frontend_url', env('FRONTEND_URL', 'https://www.eventeases.com')), '/');
     }
 
@@ -40,6 +39,9 @@ class PaymentController extends Controller
             $secretKey = $this->getPaymongoKey();
             $frontendUrl = $this->getFrontendUrl();
 
+            // Kukunin ang 50% ng total amount at i-convert sa centavos (multiply by 100 para sa PayMongo)
+            $downPaymentAmount = intval(($request->amount * 0.50) * 100);
+
             $response = Http::withBasicAuth($secretKey, '')
                 ->post('https://api.paymongo.com/v1/checkout_sessions', [
                     'data' => [
@@ -47,8 +49,8 @@ class PaymentController extends Controller
                             'line_items' => [
                                 [
                                     'currency' => 'PHP',
-                                    'amount' => intval($request->amount * 100),
-                                    'name' => $request->description,
+                                    'amount' => $downPaymentAmount, // Nakapako na sa 50% Down Payment
+                                    'name' => $request->description . ' (50% Down Payment)',
                                     'quantity' => 1
                                 ]
                             ],
@@ -56,7 +58,9 @@ class PaymentController extends Controller
                             'success_url' => $frontendUrl . '/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=' . $request->booking_id,
                             'cancel_url' => $frontendUrl . '/payment-cancelled',
                             'metadata' => [
-                                'booking_id' => (string) $request->booking_id
+                                'booking_id' => (string) $request->booking_id,
+                                'total_package_amount' => (string) $request->amount,
+                                'down_payment_amount' => (string) ($request->amount * 0.50)
                             ]
                         ]
                     ]
@@ -81,7 +85,6 @@ class PaymentController extends Controller
             $fallbackBookingId = $request->input('booking_id');
             $bookingId = null;
 
-            // If we have a session ID from PayMongo, query PayMongo API to securely retrieve metadata
             if ($sessionId && $sessionId !== 'test_session') {
                 $secretKey = $this->getPaymongoKey();
 
@@ -94,7 +97,6 @@ class PaymentController extends Controller
                 }
             }
 
-            // Fallback to request booking_id if metadata extraction was empty
             if (!$bookingId) {
                 $bookingId = $fallbackBookingId;
             }
@@ -105,38 +107,40 @@ class PaymentController extends Controller
 
             $cleanBookingId = intval(explode(':', $bookingId)[0]);
 
-            // Kunin ang booking details at user info para sa resibo bago i-update
             $booking = DB::table('bookings')->where('id', $cleanBookingId)->first();
 
-            // Direct database update to guarantee execution
+            // I-update ang status ng booking
             $updated = DB::table('bookings')
                 ->where('id', $cleanBookingId)
                 ->update([
-                    'payment_status' => 'Paid',
+                    'payment_status' => 'Paid (50% Down Payment)',
                     'status' => 'accepted',
                     'updated_at' => now()
                 ]);
 
             if ($updated) {
-                // Magpadala ng email receipt kapag na-update na sa Paid
                 if ($booking) {
                     $user = DB::table('users')->where('id', $booking->user_id)->first();
                     
                     if ($user && !empty($user->email)) {
                         try {
+                            // I-compute din sa email kung magkano ang binayaran (50%)
+                            $totalBudget = $booking->budget ?? 0;
+                            $paidAmount = $totalBudget * 0.50;
+
                             Mail::to($user->email)->send(new PaymentReceiptMail([
                                 'customer_name' => $user->name,
-                                'service_name' => $booking->event_name ?? 'Event Booking Service',
-                                'amount' => $booking->budget ?? 0,
+                                'service_name' => ($booking->event_name ?? 'Event Booking Service') . ' (50% Down Payment)',
+                                'amount' => $paidAmount,
                                 'transaction_id' => $sessionId !== 'test_session' ? $sessionId : 'EVT-' . time()
                             ]));
                         } catch (\Exception $mailEx) {
-                            Log::error('Payment Receipt Email Error: ' . $mailEx.getMessage());
+                            Log::error('Payment Receipt Email Error: ' . $mailEx->getMessage());
                         }
                     }
                 }
 
-                return response()->json(['success' => true, 'message' => 'Booking updated to Paid successfully and receipt sent.']);
+                return response()->json(['success' => true, 'message' => 'Booking updated to Down Payment Paid successfully and receipt sent.']);
             }
 
             return response()->json(['error' => 'Booking ID not found in database.'], 404);
