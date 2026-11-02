@@ -39,8 +39,7 @@ class PaymentController extends Controller
             $secretKey = $this->getPaymongoKey();
             $frontendUrl = $this->getFrontendUrl();
 
-            // Ang ipinapasa na amount galing frontend ay ang tamang downpayment na (hal. ₱16,250)
-            // Kaya diretso na nating i-convert sa centavos para sa PayMongo
+            // Naayos ang pag-multiply para sa centavos (* 100)
             $downPaymentAmount = intval($request->amount * 100);
 
             $response = Http::withBasicAuth($secretKey, '')
@@ -95,10 +94,19 @@ class PaymentController extends Controller
                 if ($response->successful()) {
                     $data = $response->json();
                     $bookingId = $data['data']['attributes']['metadata']['booking_id'] ?? null;
-                    // Kunin ang eksaktong amount mula sa line_items o metadata kung magkano ang binayaran
-                    $lineItems = $data['data']['attributes']['line_items'] ?? [];
-                    if (!empty($lineItems)) {
-                        $paidAmount = ($lineItems[0]['amount'] ?? 0) / 100;
+                    
+                    // Unang kukunin ang amount mula sa metadata kung saan nakastore ang eksaktong downpayment
+                    $metaAmount = $data['data']['attributes']['metadata']['down_payment_amount'] ?? null;
+                    if ($metaAmount) {
+                        $paidAmount = floatval($metaAmount);
+                    }
+
+                    // Kung walang metadata amount, kukunin sa line_items
+                    if ($paidAmount <= 0) {
+                        $lineItems = $data['data']['attributes']['line_items'] ?? [];
+                        if (!empty($lineItems)) {
+                            $paidAmount = ($lineItems[0]['amount'] ?? 0) / 100;
+                        }
                     }
                 }
             }
@@ -115,10 +123,16 @@ class PaymentController extends Controller
 
             $booking = DB::table('bookings')->where('id', $cleanBookingId)->first();
 
+            // Dynamic calculation kung sakaling walang nakuha sa session
             if ($paidAmount <= 0 && $booking) {
-                // Fallback kalkulasyon kung sakaling walang nakuha sa session line items
-                $calcTotal = $booking->budget ?? 32500; 
-                $paidAmount = $calcTotal / 2;
+                // Kalkulahin mula sa mga nakakabit na serbisyo sa pivot table kung mayroon man
+                $servicesTotal = DB::table('booking_services')
+                    ->join('services', 'services.id', '=', 'booking_services.service_id')
+                    ->where('booking_services.booking_id', $cleanBookingId)
+                    ->sum('services.price');
+
+                $totalCost = $servicesTotal > 0 ? $servicesTotal : ($booking->budget ?? 0);
+                $paidAmount = $totalCost / 2; 
             }
 
             // I-update ang status ng booking patungong paid
