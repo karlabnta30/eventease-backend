@@ -39,8 +39,9 @@ class PaymentController extends Controller
             $secretKey = $this->getPaymongoKey();
             $frontendUrl = $this->getFrontendUrl();
 
-            // Kukunin ang 50% ng total amount at i-convert sa centavos (multiply by 100 para sa PayMongo)
-            $downPaymentAmount = intval(($request->amount * 0.50) * 100);
+            // Ang ipinapasa na amount galing frontend ay ang tamang downpayment na (hal. ₱16,250)
+            // Kaya diretso na nating i-convert sa centavos para sa PayMongo
+            $downPaymentAmount = intval($request->amount * 100);
 
             $response = Http::withBasicAuth($secretKey, '')
                 ->post('https://api.paymongo.com/v1/checkout_sessions', [
@@ -49,7 +50,7 @@ class PaymentController extends Controller
                             'line_items' => [
                                 [
                                     'currency' => 'PHP',
-                                    'amount' => $downPaymentAmount, // Nakapako na sa 50% Down Payment
+                                    'amount' => $downPaymentAmount, 
                                     'name' => $request->description . ' (50% Down Payment)',
                                     'quantity' => 1
                                 ]
@@ -59,8 +60,7 @@ class PaymentController extends Controller
                             'cancel_url' => $frontendUrl . '/payment-cancelled',
                             'metadata' => [
                                 'booking_id' => (string) $request->booking_id,
-                                'total_package_amount' => (string) $request->amount,
-                                'down_payment_amount' => (string) ($request->amount * 0.50)
+                                'down_payment_amount' => (string) $request->amount
                             ]
                         ]
                     ]
@@ -84,6 +84,7 @@ class PaymentController extends Controller
             $sessionId = $request->input('session_id');
             $fallbackBookingId = $request->input('booking_id');
             $bookingId = null;
+            $paidAmount = 0;
 
             if ($sessionId && $sessionId !== 'test_session') {
                 $secretKey = $this->getPaymongoKey();
@@ -94,6 +95,11 @@ class PaymentController extends Controller
                 if ($response->successful()) {
                     $data = $response->json();
                     $bookingId = $data['data']['attributes']['metadata']['booking_id'] ?? null;
+                    // Kunin ang eksaktong amount mula sa line_items o metadata kung magkano ang binayaran
+                    $lineItems = $data['data']['attributes']['line_items'] ?? [];
+                    if (!empty($lineItems)) {
+                        $paidAmount = ($lineItems[0]['amount'] ?? 0) / 100;
+                    }
                 }
             }
 
@@ -109,7 +115,13 @@ class PaymentController extends Controller
 
             $booking = DB::table('bookings')->where('id', $cleanBookingId)->first();
 
-            // I-update ang status ng booking
+            if ($paidAmount <= 0 && $booking) {
+                // Fallback kalkulasyon kung sakaling walang nakuha sa session line items
+                $calcTotal = $booking->budget ?? 32500; 
+                $paidAmount = $calcTotal / 2;
+            }
+
+            // I-update ang status ng booking patungong paid
             $updated = DB::table('bookings')
                 ->where('id', $cleanBookingId)
                 ->update([
@@ -124,10 +136,6 @@ class PaymentController extends Controller
                     
                     if ($user && !empty($user->email)) {
                         try {
-                            // I-compute din sa email kung magkano ang binayaran (50%)
-                            $totalBudget = $booking->budget ?? 0;
-                            $paidAmount = $totalBudget * 0.50;
-
                             Mail::to($user->email)->send(new PaymentReceiptMail([
                                 'customer_name' => $user->name,
                                 'service_name' => ($booking->event_name ?? 'Event Booking Service') . ' (50% Down Payment)',
