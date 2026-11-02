@@ -18,7 +18,7 @@ use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\BundleController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\Api\PublicCatalogController; // 👈 Idinagdag ang import na ito
+use App\Http\Controllers\Api\PublicCatalogController;
 
 // --- PUBLIC ROUTES ---
 Route::post('/register', [AuthController::class, 'register']);
@@ -38,7 +38,7 @@ Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']
 // --- PUBLIC BUNDLE CATALOG ROUTE ---
 Route::get('/bundles', [BundleController::class, 'index']);
 
-// --- PUBLIC SERVICE CATALOG ROUTE (Itinama sa PublicCatalogController) ---
+// --- PUBLIC SERVICE CATALOG ROUTE ---
 Route::get('/services', [PublicCatalogController::class, 'index']);
 
 // --- PUBLIC PAYMENT VERIFICATION ROUTE ---
@@ -106,5 +106,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/vendors', [AdminController::class, 'getVendors']);
         Route::get('/admin/vendor-permits', [AdminController::class, 'getVendorsForVerification']);
         Route::patch('/admin/vendors/{id}/verify', [AdminController::class, 'updateVerificationStatus']);
+        
+        // 👉 Idinagdag ang rutenang ito para sa Activity Logs
+        Route::get('/admin/activity-logs', [AdminController::class, 'getActivityLogs']);
     });
 });

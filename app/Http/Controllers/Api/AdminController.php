@@ -11,6 +11,19 @@ use Illuminate\Support\Facades\Auth;
 class AdminController extends Controller
 {
     /**
+     * GET Activity Logs for Admin Dashboard
+     */
+    public function getActivityLogs()
+    {
+        try {
+            $logs = DB::table('activity_logs')->orderBy('created_at', 'desc')->take(50)->get();
+            return response()->json(['data' => $logs], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch activity logs: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * SAVE Feedback (Called by Client via Contact Page)
      */
     public function storeFeedback(Request $request)
@@ -90,7 +103,6 @@ class AdminController extends Controller
     public function getVendorsForVerification()
     {
         try {
-            // I-filter natin para makuha lamang ang mga may permit_path na hindi null o blangko
             $vendors = DB::table('users')
                 ->where('users.role', 'vendor')
                 ->whereNotNull('users.permit_path')
@@ -134,13 +146,11 @@ class AdminController extends Controller
         ]);
 
         try {
-            // Update global status on the user account table
             DB::table('users')->where('id', $id)->update([
                 'verification_status' => $request->status,
                 'updated_at' => now()
             ]);
 
-            // Sync verification status across all services owned by this vendor
             DB::table('services')->where('user_id', $id)->update([
                 'verification_status' => $request->status,
                 'updated_at' => now()
