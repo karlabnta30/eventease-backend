@@ -262,19 +262,6 @@ class AuthController extends Controller
     }
 
     /**
-     * GET Activity Logs (For Dashboard / Admin view)
-     */
-    public function getActivityLogs(Request $request)
-    {
-        try {
-            $logs = DB::table('activity_logs')->orderBy('created_at', 'desc')->get();
-            return response()->json(['data' => $logs], 200);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Failed to fetch logs', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
      * SEND OTP
      */
     public function sendOtp(Request $request)

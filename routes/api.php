@@ -107,7 +107,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/vendor-permits', [AdminController::class, 'getVendorsForVerification']);
         Route::patch('/admin/vendors/{id}/verify', [AdminController::class, 'updateVerificationStatus']);
         
-        // 👉 Idinagdag ang rutenang ito para sa Activity Logs
+        // Activity Logs endpoint nakaturo na nang tama sa AdminController
         Route::get('/admin/activity-logs', [AdminController::class, 'getActivityLogs']);
     });
 });
