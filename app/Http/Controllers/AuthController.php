@@ -57,10 +57,20 @@ class AuthController extends Controller
             }
         }
 
-        // If it's the master admin, automatically generate token to bypass OTP screen on frontend
         $token = null;
         if ($isMasterAdmin) {
             $token = $user->createToken('auth_token')->plainTextToken;
+            
+            // Record login log for master admin auto-sign in
+            DB::table('activity_logs')->insert([
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => $user->role,
+                'action' => 'LOGIN',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
 
         return response()->json([
@@ -76,7 +86,7 @@ class AuthController extends Controller
     }
 
     /**
-     * LOGIN User with Master Admin Bypass Support & Unverified Auto-Resend OTP
+     * LOGIN User with Master Admin Bypass Support & Activity Logging
      */
     public function login(Request $request) 
     {
@@ -102,6 +112,17 @@ class AuthController extends Controller
 
             $token = $user->createToken('auth_token')->plainTextToken;
 
+            // Record login activity
+            DB::table('activity_logs')->insert([
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => $user->role,
+                'action' => 'LOGIN',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
             return response()->json([
                 'message' => 'Master admin login successful',
                 'bypass_otp' => true,
@@ -110,9 +131,7 @@ class AuthController extends Controller
             ], 200);
         }
 
-        // Check if user is unverified (has an active/pending OTP)
         if (!is_null($user->otp) || is_null($user->email_verified_at)) {
-            // Generate a fresh OTP so they can proceed right away even if they exited earlier
             $newOtp = rand(100000, 999999);
             $user->otp = $newOtp;
             $user->otp_expires_at = Carbon::now()->addMinutes(10);
@@ -133,6 +152,17 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Record successful login activity
+        DB::table('activity_logs')->insert([
+            'user_id' => $user->id,
+            'user_name' => $user->name,
+            'role' => $user->role,
+            'action' => 'LOGIN',
+            'ip_address' => $request->ip(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json([
             'message' => 'Login successful',
@@ -205,15 +235,43 @@ class AuthController extends Controller
     }
 
     /**
-     * LOGOUT
+     * LOGOUT with Activity Logging
      */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+
+        if ($user) {
+            // Record logout activity
+            DB::table('activity_logs')->insert([
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => $user->role,
+                'action' => 'LOGOUT',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $user->currentAccessToken()->delete();
+        }
 
         return response()->json([
             'message' => 'Logged out successfully'
         ], 200);
+    }
+
+    /**
+     * GET Activity Logs (For Dashboard / Admin view)
+     */
+    public function getActivityLogs(Request $request)
+    {
+        try {
+            $logs = DB::table('activity_logs')->orderBy('created_at', 'desc')->get();
+            return response()->json(['data' => $logs], 200);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to fetch logs', 'error' => $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -250,7 +308,7 @@ class AuthController extends Controller
     }
 
     /**
-     * VERIFY OTP
+     * VERIFY OTP & Log Login Activity
      */
     public function verifyOtp(Request $request)
     {
@@ -275,6 +333,17 @@ class AuthController extends Controller
         $user->save();
 
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Record login activity after successful verification
+        DB::table('activity_logs')->insert([
+            'user_id' => $user->id,
+            'user_name' => $user->name,
+            'role' => $user->role,
+            'action' => 'LOGIN',
+            'ip_address' => $request->ip(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json([
             'message' => 'OTP verified successfully!',
