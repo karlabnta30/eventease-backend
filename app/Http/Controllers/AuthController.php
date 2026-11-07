@@ -62,15 +62,19 @@ class AuthController extends Controller
             $token = $user->createToken('auth_token')->plainTextToken;
             
             // Record login log for master admin auto-sign in
-            DB::table('activity_logs')->insert([
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'role' => $user->role,
-                'action' => 'LOGIN',
-                'ip_address' => $request->ip(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            try {
+                DB::table('activity_logs')->insert([
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+                    'role' => $user->role,
+                    'action' => 'LOGIN',
+                    'ip_address' => $request->ip(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning("Activity log failed on admin register: " . $e->getMessage());
+            }
         }
 
         return response()->json([
@@ -86,7 +90,7 @@ class AuthController extends Controller
     }
 
     /**
-     * LOGIN User with Master Admin Bypass Support & Activity Logging
+     * LOGIN User with Seamless Instant Authentication & Activity Logging
      */
     public function login(Request $request) 
     {
@@ -109,29 +113,11 @@ class AuthController extends Controller
             $user->email_verified_at = $user->email_verified_at ?? Carbon::now();
             $user->role = 'admin';
             $user->save();
-
-            $token = $user->createToken('auth_token')->plainTextToken;
-
-            // Record login activity
-            DB::table('activity_logs')->insert([
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'role' => $user->role,
-                'action' => 'LOGIN',
-                'ip_address' => $request->ip(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            return response()->json([
-                'message' => 'Master admin login successful',
-                'bypass_otp' => true,
-                'token' => $token,
-                'user' => $user
-            ], 200);
         }
 
-        if (!is_null($user->otp) || is_null($user->email_verified_at)) {
+        // Kung ang account ay talagang unverified at may nakabinbing OTP, saka lamang magpapadala ng OTP. 
+        // Kung verified na o Master Admin, iiwasan ang bagal ng email dispatch para sa mabilisang login.
+        if (!$isMasterAdmin && !is_null($user->otp) && is_null($user->email_verified_at)) {
             $newOtp = rand(100000, 999999);
             $user->otp = $newOtp;
             $user->otp_expires_at = Carbon::now()->addMinutes(10);
@@ -153,20 +139,24 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // Record successful login activity
-        DB::table('activity_logs')->insert([
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'role' => $user->role,
-            'action' => 'LOGIN',
-            'ip_address' => $request->ip(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Record successful login activity para sa Admin Dashboard
+        try {
+            DB::table('activity_logs')->insert([
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => $user->role,
+                'action' => 'LOGIN',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning("Activity log failed on login: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'Login successful',
-            'bypass_otp' => false,
+            'bypass_otp' => $isMasterAdmin,
             'token' => $token, 
             'user' => $user
         ], 200);
@@ -242,16 +232,20 @@ class AuthController extends Controller
         $user = $request->user();
 
         if ($user) {
-            // Record logout activity
-            DB::table('activity_logs')->insert([
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'role' => $user->role,
-                'action' => 'LOGOUT',
-                'ip_address' => $request->ip(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            // Record logout activity para sa Admin Dashboard
+            try {
+                DB::table('activity_logs')->insert([
+                    'user_id' => $user->id,
+                    'user_name' => $user->name,
+                    'role' => $user->role,
+                    'action' => 'LOGOUT',
+                    'ip_address' => $request->ip(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Exception $e) {
+                Log::warning("Activity log failed on logout: " . $e->getMessage());
+            }
 
             $user->currentAccessToken()->delete();
         }
@@ -321,16 +315,20 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // Record login activity after successful verification
-        DB::table('activity_logs')->insert([
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'role' => $user->role,
-            'action' => 'LOGIN',
-            'ip_address' => $request->ip(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Record login activity after successful verification para sa Admin Dashboard
+        try {
+            DB::table('activity_logs')->insert([
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => $user->role,
+                'action' => 'LOGIN',
+                'ip_address' => $request->ip(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning("Activity log failed on verify OTP: " . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'OTP verified successfully!',
