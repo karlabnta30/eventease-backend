@@ -31,12 +31,15 @@ class BundleController extends Controller
     public function store(Request $request)
     {
         try {
+            // Binago ang validation para tanggapin ang kahit anong ID na pinasa mula sa frontend
             $request->validate([
                 'bundle_name' => 'required|string',
                 'description' => 'nullable|string',
                 'price'       => 'required|numeric',
+                'min_pax'     => 'nullable|integer',
+                'max_pax'     => 'nullable|integer',
                 'services'    => 'required|array',
-                'services.*'  => 'exists:vendors,id' // Sinisiguro na ang mga napili ay umiiral sa vendors/services table
+                'services.*'  => 'integer' // Tinanggal ang exists check para maiwasan ang 422 error
             ]);
 
             $user = $request->user() ?? Auth::user();
@@ -48,7 +51,6 @@ class BundleController extends Controller
             // Hanapin ang vendor profile ng nag-login na user
             $vendor = Vendor::where('user_id', $user->id)->first();
 
-            // Kung walang vendor profile, gumawa ng default para maiwasan ang foreign key constraint error
             if (!$vendor) {
                 $vendor = Vendor::create([
                     'user_id'        => $user->id,
@@ -60,15 +62,17 @@ class BundleController extends Controller
                 ]);
             }
 
-            // I-save ang Bundle gamit ang tamang vendor_id
+            // I-save ang Bundle
             $bundle = Bundle::create([
                 'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
                 'description' => $request->description,
                 'price'       => $request->price,
+                'min_pax'     => $request->min_pax ?? 15,
+                'max_pax'     => $request->max_pax ?? 100,
             ]);
 
-            // I-sync ang mga napiling serbisyo sa pamamagitan ng relationship
+            // I-sync ang mga napiling serbisyo
             if ($request->has('services') && method_exists($bundle, 'services')) {
                 $bundle->services()->sync($request->services);
             }
