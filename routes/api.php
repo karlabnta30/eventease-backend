@@ -71,6 +71,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/vendors', [VendorController::class, 'index']); 
     Route::get('/vendors/{id}', [VendorController::class, 'show']); 
 
+    // Bundle management (Accessible sa authenticated vendors / users)
+    Route::post('/bundles', [BundleController::class, 'store']);
+    Route::delete('/bundles/{id}', [BundleController::class, 'destroy']);
+
     Route::prefix('bookings')->group(function () {
         Route::get('/', [BookingController::class, 'index']);
         Route::post('/', [BookingController::class, 'store']);
@@ -94,8 +98,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/vendors/{id}/status', [VendorController::class, 'updateStatus']);
         Route::post('/vendors/toggle/{id}', [BookingController::class, 'toggleAvailability']);
         Route::post('/vendor/upload-permit', [VendorController::class, 'uploadPermit']);
-        Route::post('/bundles', [BundleController::class, 'store']);
-        Route::delete('/bundles/{id}', [BundleController::class, 'destroy']);
     });
 
     Route::middleware('role:admin')->group(function () {
@@ -106,8 +108,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/vendors', [AdminController::class, 'getVendors']);
         Route::get('/admin/vendor-permits', [AdminController::class, 'getVendorsForVerification']);
         Route::patch('/admin/vendors/{id}/verify', [AdminController::class, 'updateVerificationStatus']);
-        
-        // Activity Logs endpoint nakaturo na nang tama sa AdminController
         Route::get('/admin/activity-logs', [AdminController::class, 'getActivityLogs']);
     });
 });

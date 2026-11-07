@@ -106,8 +106,17 @@ class BundleController extends Controller
                 return response()->json(['message' => 'Bundle not found'], 404);
             }
 
+            $role = strtolower($user->role ?? '');
+            $isAdmin = ($role === 'admin' || $role === 'administrator');
+
+            // Hanapin ang vendor record ng user
             $vendor = Vendor::where('user_id', $user->id)->first();
-            if ($vendor && $bundle->vendor_id !== $vendor->id && optional($user)->role !== 'admin') {
+            
+            // Suriin kung ang user ay admin, o kung may vendor record siya at tumutugma ang ID, 
+            // O kaya ay pahintulutan kung ang vendor_id ng bundle ay pagmamay-ari ng user (fallback check)
+            $isOwner = ($vendor && $bundle->vendor_id === $vendor->id) || ($bundle->vendor && $bundle->vendor->user_id === $user->id);
+
+            if (!$isAdmin && !$isOwner) {
                 return response()->json(['error' => 'Unauthorized action.'], 403);
             }
 
