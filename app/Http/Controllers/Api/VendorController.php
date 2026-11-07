@@ -37,7 +37,7 @@ class VendorController extends Controller
             // Kunin ang mga ID ng vendor/services na pag-aari ng user na ito
             $vendorServiceIds = Vendor::where('user_id', $vendorUserId)->pluck('id');
 
-            // Kunin ang mga booking kung saan kabilang ang mga serbisyo ng vendor na ito sa booking_service table o sa pamamagitan ng service_id
+            // Kunin ang mga booking para sa mga vendor na ito nang walang error
             $bookings = Booking::where(function($query) use ($vendorServiceIds) {
                     $query->whereIn('service_id', $vendorServiceIds)
                           ->orWhereHas('services', function($q) use ($vendorServiceIds) {
@@ -100,7 +100,6 @@ class VendorController extends Controller
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            // Kung binago ang payment_status o status
             if ($request->has('payment_status')) {
                 $booking->payment_status = $request->payment_status;
             }

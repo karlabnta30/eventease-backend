@@ -45,8 +45,8 @@ class Booking extends Model
 
     public function services()
     {
-        return $this->belongsToMany(Service::class, 'booking_service', 'booking_id', 'service_id')
-                    ->withPivot('price', 'vendor_id');
+        return $this->belongsToMany(Vendor::class, 'booking_service', 'booking_id', 'vendor_id')
+                    ->withPivot('price');
     }
 
     public function user() {
