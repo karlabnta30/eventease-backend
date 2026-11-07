@@ -88,7 +88,6 @@ class BookingController extends Controller
                     if (isset($serviceRecord->price) && $actualPrice === null) {
                         $actualPrice = $serviceRecord->price;
                     }
-                    // Awtomatikong kunin ang vendor_id mula sa service kung wala pa
                     if (!$resolvedVendorId) {
                         if (isset($serviceRecord->vendor_id)) {
                             $resolvedVendorId = $serviceRecord->vendor_id;
@@ -345,7 +344,6 @@ class BookingController extends Controller
                 ], 200);
             }
 
-            // Kunin ang service IDs gamit ang parehong user_id o vendor_id
             $serviceIds = DB::table('services')
                 ->where('user_id', $userId)
                 ->orWhereIn('vendor_id', $vendorIds)
@@ -372,8 +370,21 @@ class BookingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
+            // Wastong pagkalkula ng earnings base sa uri ng payment status (Fully Paid = 100%, Downpayment = 50%)
+            $totalEarnings = $bookings->sum(function($booking) {
+                $status = strtolower(trim($booking->payment_status ?? ''));
+                $budget = (float) ($booking->budget ?? 0);
+
+                if (in_array($status, ['fully_paid', 'completed', 'paid', 'paid fully (history)'])) {
+                    return $budget;
+                } elseif (in_array($status, ['downpayment_paid', 'paid (50% down payment)'])) {
+                    return $budget * 0.50;
+                }
+                return 0;
+            });
+
             $stats = [
-                'earnings' => $bookings->where('payment_status', 'Paid')->sum('budget'),
+                'earnings' => $totalEarnings,
                 'pending' => $bookings->where('status', 'pending')->count()
             ];
 
@@ -422,7 +433,14 @@ class BookingController extends Controller
     {
         try {
             $booking = Booking::findOrFail($this->cleanId($id));
-            $booking->status = $request->status;
+            
+            if ($request->has('status')) {
+                $booking->status = $request->status;
+            }
+            if ($request->has('payment_status')) {
+                $booking->payment_status = $request->payment_status;
+            }
+            
             $booking->save();
 
             if ($request->status === 'accepted') {
@@ -435,7 +453,7 @@ class BookingController extends Controller
             DB::table('notifications')->insert([
                 'user_id'    => $booking->user_id,
                 'title'      => 'Booking Update',
-                'message'    => "The vendor has " . $request->status . " your request for " . $booking->event_name,
+                'message'    => "The vendor has updated your booking status for " . $booking->event_name,
                 'is_read'    => 0,
                 'created_at' => now(),
                 'updated_at' => now(),

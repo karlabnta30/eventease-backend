@@ -27,54 +27,25 @@ class VendorController extends Controller
     }
 
     /**
-     * Fetch bookings specifically for this vendor and calculate revenue safely
+     * Fetch bookings specifically for this vendor
      */
     public function myBookings()
     {
         try {
-            $vendorUserId = Auth::id();
-            
-            // Kunin ang mga ID ng services/vendors na pag-aari ng user na ito
-            $vendorServiceIds = Vendor::where('user_id', $vendorUserId)->pluck('id');
+            $serviceIds = Vendor::where('user_id', Auth::id())->pluck('id');
 
-            // Kunin ang mga booking ID mula sa booking_service table o service_id column
-            $bookingIds = DB::table('booking_service')
-                ->whereIn('service_id', $vendorServiceIds)
-                ->pluck('booking_id')
-                ->merge(
-                    Booking::whereIn('service_id', $vendorServiceIds)->pluck('id')
-                )
-                ->unique();
-
-            // Kunin ang mismong mga booking kasama ang user at services nang walang pivot price conflict
-            $bookings = Booking::whereIn('id', $bookingIds)
-                ->with(['user', 'services'])
+            $bookings = Booking::whereIn('service_id', $serviceIds)
+                ->with('user')
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Kalkulahin ang total earnings gamit ang budget ng booking o service price
-            $totalEarnings = Booking::whereIn('id', $bookingIds)
-                ->whereIn('payment_status', ['downpayment_paid', 'fully_paid', 'completed', 'paid'])
-                ->get()
-                ->sum(function($booking) {
-                    $budget = (float) $booking->budget;
-                    $status = strtolower(trim($booking->payment_status));
-                    
-                    // Kung fully paid, buong budget; kung downpayment pa lang, 50%
-                    if (in_array($status, ['fully_paid', 'completed', 'paid'])) {
-                        return $budget;
-                    } else {
-                        return $budget * 0.50;
-                    }
-                });
-
-            $pendingCount = Booking::whereIn('id', $bookingIds)
-                ->where('status', 'pending')
-                ->count();
-
             $stats = [
-                'earnings' => $totalEarnings ?? 0,
-                'pending' => $pendingCount,
+                'earnings' => Booking::whereIn('service_id', $serviceIds)
+                    ->where('payment_status', 'Paid')
+                    ->sum('budget'),
+                'pending' => Booking::whereIn('service_id', $serviceIds)
+                    ->where('status', 'pending')
+                    ->count(),
             ];
 
             return response()->json([
@@ -82,8 +53,7 @@ class VendorController extends Controller
                 'stats' => $stats
             ], 200);
         } catch (\Exception $e) {
-            Log::error("Vendor fetch failed: " . $e->getMessage() . " on line " . $e->getLine());
-            return response()->json(['error' => 'Vendor fetch failed: ' . $e->getMessage()], 500);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
@@ -95,25 +65,15 @@ class VendorController extends Controller
         try {
             $booking = Booking::findOrFail($id);
             
-            $vendorServiceIds = Vendor::where('user_id', Auth::id())->pluck('id')->toArray();
-            
-            $isAssociated = in_array($booking->service_id, $vendorServiceIds) || 
-                            DB::table('booking_service')->where('booking_id', $id)->whereIn('service_id', $vendorServiceIds)->exists();
-
-            if (!$isAssociated) {
+            $serviceIds = Vendor::where('user_id', Auth::id())->pluck('id')->toArray();
+            if (!in_array($booking->service_id, $serviceIds)) {
                 return response()->json(['error' => 'Unauthorized'], 403);
             }
 
-            if ($request->has('payment_status')) {
-                $booking->payment_status = $request->payment_status;
-            }
-            if ($request->has('status')) {
-                $booking->status = $request->status; 
-            }
-            
+            $booking->status = $request->status; 
             $booking->save();
 
-            return response()->json(['message' => "Booking status updated successfully!"]);
+            return response()->json(['message' => "Booking {$request->status} successfully!"]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }
@@ -127,6 +87,7 @@ class VendorController extends Controller
         try {
             $user = Auth::user();
 
+            // 1. MAHIGPIT NA SECURITY: Bawal mag-add ng service kung walang permit o hindi verified
             $userRecord = DB::table('users')->where('id', $user->id)->first();
             
             if (empty($userRecord->permit_path) || $userRecord->verification_status !== 'verified') {
@@ -228,7 +189,7 @@ class VendorController extends Controller
     {
         try {
             $request->validate([
-                'permit' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', 
+                'permit' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
             ]);
 
             $user = Auth::user();
