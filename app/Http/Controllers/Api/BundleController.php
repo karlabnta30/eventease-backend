@@ -46,11 +46,14 @@ class BundleController extends Controller
                 return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // Hanapin o likhain ang tamang vendor na sigurado nating umiiral sa database
-            $vendor = Vendor::where('user_id', $user->id)->first();
+            // Hanapin ang vendor at beripikahin kung talagang existing sa database table
+            $vendor = null;
+            $existingVendor = Vendor::where('user_id', $user->id)->first();
 
-            if (!$vendor) {
-                // Kung wala pang vendor profile, gumawa ng bago
+            if ($existingVendor && Vendor::where('id', $existingVendor->id)->exists()) {
+                $vendor = $existingVendor;
+            } else {
+                // Kung wala o invalid ang lumang ID, gumawa ng bagong sariwang vendor record para sa user na ito
                 $vendor = Vendor::create([
                     'user_id'        => $user->id,
                     'business_name'  => $user->name ?? 'Vendor Enterprise',
@@ -59,22 +62,9 @@ class BundleController extends Controller
                     'starting_price' => 0,
                     'is_available'   => true,
                 ]);
-            } else {
-                // Sisiguruhing ang vendor ID na gagamitin ay valid at existing
-                $existsInDb = Vendor::where('id', $vendor->id)->exists();
-                if (!$existsInDb) {
-                    $vendor = Vendor::create([
-                        'user_id'        => $user->id,
-                        'business_name'  => $user->name ?? 'Vendor Enterprise',
-                        'category'       => 'General',
-                        'location'       => 'Metro Manila',
-                        'starting_price' => 0,
-                        'is_available'   => true,
-                    ]);
-                }
             }
 
-            // I-save ang Bundle gamit ang beripikadong vendor ID
+            // I-save ang Bundle gamit ang bagong kuha at sigurado-ng-valid na vendor id
             $bundle = Bundle::create([
                 'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
@@ -84,9 +74,8 @@ class BundleController extends Controller
                 'max_pax'     => $request->max_pax ?? 100,
             ]);
 
-            // I-sync ang mga napiling serbisyo kung mayroon
+            // I-sync ang mga napiling serbisyo
             if ($request->has('services') && method_exists($bundle, 'services')) {
-                // Salain muna para matiyak na integer IDs ang isi-sync
                 $serviceIds = array_map('intval', $request->services);
                 $bundle->services()->sync($serviceIds);
             }
