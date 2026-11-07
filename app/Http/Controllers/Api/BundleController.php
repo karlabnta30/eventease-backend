@@ -58,14 +58,15 @@ class BundleController extends Controller
                 ]
             );
 
-            // I-save ang Bundle gamit ang bagong kuha at sigurado-ng-valid na vendor id
+            // I-save ang Bundle na may kasamang is_available = true para laging online by default
             $bundle = Bundle::create([
-                'vendor_id'   => $vendor->id,
-                'bundle_name' => $request->bundle_name,
-                'description' => $request->description,
-                'price'       => $request->price,
-                'min_pax'     => $request->min_pax ?? 15,
-                'max_pax'     => $request->max_pax ?? 100,
+                'vendor_id'    => $vendor->id,
+                'bundle_name'  => $request->bundle_name,
+                'description'  => $request->description,
+                'price'        => $request->price,
+                'min_pax'      => $request->min_pax ?? 15,
+                'max_pax'      => $request->max_pax ?? 100,
+                'is_available' => true, 
             ]);
 
             // I-sync ang mga napiling serbisyo
