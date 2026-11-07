@@ -37,18 +37,22 @@ class VendorController extends Controller
             // Kunin ang mga ID ng vendor/services na pag-aari ng user na ito
             $vendorServiceIds = Vendor::where('user_id', $vendorUserId)->pluck('id');
 
-            // Kunin ang mga booking para sa mga vendor na ito nang walang error
-            $bookings = Booking::where(function($query) use ($vendorServiceIds) {
-                    $query->whereIn('service_id', $vendorServiceIds)
-                          ->orWhereHas('services', function($q) use ($vendorServiceIds) {
-                              $q->whereIn('vendors.id', $vendorServiceIds);
-                          });
-                })
+            // Kunin ang mga booking ID kung saan kabilang ang vendor na ito sa pamamagitan ng service_id o booking_service table
+            $bookingIds = DB::table('booking_service')
+                ->whereIn('vendor_id', $vendorServiceIds)
+                ->pluck('booking_id')
+                ->merge(
+                    Booking::whereIn('service_id', $vendorServiceIds)->pluck('id')
+                )
+                ->unique();
+
+            // Kunin ang mismong mga booking kasama ang user at services
+            $bookings = Booking::whereIn('id', $bookingIds)
                 ->with(['user', 'services'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Kalkulahin ang total earnings gamit ang booking_service table para mahati nang tama ang kita
+            // Kalkulahin ang total earnings gamit ang booking_service table para sa vendor na ito
             $totalEarnings = DB::table('booking_service')
                 ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
                 ->whereIn('booking_service.vendor_id', $vendorServiceIds)
@@ -60,12 +64,7 @@ class VendorController extends Controller
                     END')
                 );
 
-            $pendingCount = Booking::where(function($query) use ($vendorServiceIds) {
-                    $query->whereIn('service_id', $vendorServiceIds)
-                          ->orWhereHas('services', function($q) use ($vendorServiceIds) {
-                              $q->whereIn('vendors.id', $vendorServiceIds);
-                          });
-                })
+            $pendingCount = Booking::whereIn('id', $bookingIds)
                 ->where('status', 'pending')
                 ->count();
 
@@ -79,6 +78,7 @@ class VendorController extends Controller
                 'stats' => $stats
             ], 200);
         } catch (\Exception $e) {
+            Log::error("myBookings Error: " . $e->getMessage() . " on line " . $e->getLine());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
