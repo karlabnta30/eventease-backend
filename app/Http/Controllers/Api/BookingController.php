@@ -370,7 +370,6 @@ class BookingController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Wastong pagkalkula ng earnings base sa uri ng payment status (Fully Paid = 100%, Downpayment = 50%)
             $totalEarnings = $bookings->sum(function($booking) {
                 $status = strtolower(trim($booking->payment_status ?? ''));
                 $budget = (float) ($booking->budget ?? 0);

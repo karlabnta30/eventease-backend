@@ -39,7 +39,6 @@ class PaymentController extends Controller
             $secretKey = $this->getPaymongoKey();
             $frontendUrl = $this->getFrontendUrl();
 
-            // Naayos ang pag-multiply para sa centavos (* 100)
             $downPaymentAmount = intval($request->amount * 100);
 
             $response = Http::withBasicAuth($secretKey, '')
@@ -95,13 +94,11 @@ class PaymentController extends Controller
                     $data = $response->json();
                     $bookingId = $data['data']['attributes']['metadata']['booking_id'] ?? null;
                     
-                    // Unang kukunin ang amount mula sa metadata kung saan nakastore ang eksaktong downpayment
                     $metaAmount = $data['data']['attributes']['metadata']['down_payment_amount'] ?? null;
                     if ($metaAmount) {
                         $paidAmount = floatval($metaAmount);
                     }
 
-                    // Kung walang metadata amount, kukunin sa line_items
                     if ($paidAmount <= 0) {
                         $lineItems = $data['data']['attributes']['line_items'] ?? [];
                         if (!empty($lineItems)) {
@@ -123,19 +120,17 @@ class PaymentController extends Controller
 
             $booking = DB::table('bookings')->where('id', $cleanBookingId)->first();
 
-            // Dynamic calculation kung sakaling walang nakuha sa session
             if ($paidAmount <= 0 && $booking) {
-                // Kalkulahin mula sa mga nakakabit na serbisyo sa pivot table kung mayroon man
-                $servicesTotal = DB::table('booking_services')
-                    ->join('services', 'services.id', '=', 'booking_services.service_id')
-                    ->where('booking_services.booking_id', $cleanBookingId)
+                // ITAMA ANG PANGALAN NG TABLE MULA booking_services PATUNGONG booking_service
+                $servicesTotal = DB::table('booking_service')
+                    ->join('services', 'services.id', '=', 'booking_service.service_id')
+                    ->where('booking_service.booking_id', $cleanBookingId)
                     ->sum('services.price');
 
                 $totalCost = $servicesTotal > 0 ? $servicesTotal : ($booking->budget ?? 0);
                 $paidAmount = $totalCost / 2; 
             }
 
-            // I-update ang status ng booking patungong paid
             $updated = DB::table('bookings')
                 ->where('id', $cleanBookingId)
                 ->update([
