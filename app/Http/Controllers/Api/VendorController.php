@@ -34,12 +34,12 @@ class VendorController extends Controller
         try {
             $vendorUserId = Auth::id();
             
-            // Kunin ang mga ID ng vendor/services na pag-aari ng user na ito
+            // Kunin ang mga ID ng services/vendors na pag-aari ng user na ito
             $vendorServiceIds = Vendor::where('user_id', $vendorUserId)->pluck('id');
 
-            // Kunin ang mga booking ID kung saan kabilang ang vendor na ito sa pamamagitan ng service_id o booking_service table
+            // Kunin ang mga booking ID mula sa booking_service table o service_id column
             $bookingIds = DB::table('booking_service')
-                ->whereIn('vendor_id', $vendorServiceIds)
+                ->whereIn('service_id', $vendorServiceIds)
                 ->pluck('booking_id')
                 ->merge(
                     Booking::whereIn('service_id', $vendorServiceIds)->pluck('id')
@@ -52,10 +52,10 @@ class VendorController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Kalkulahin ang total earnings gamit ang booking_service table para sa vendor na ito
+            // Kalkulahin ang total earnings gamit ang service_id sa booking_service table
             $totalEarnings = DB::table('booking_service')
                 ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
-                ->whereIn('booking_service.vendor_id', $vendorServiceIds)
+                ->whereIn('booking_service.service_id', $vendorServiceIds)
                 ->whereIn('bookings.payment_status', ['downpayment_paid', 'fully_paid', 'completed', 'paid'])
                 ->sum(
                     DB::raw('CASE 
@@ -78,8 +78,8 @@ class VendorController extends Controller
                 'stats' => $stats
             ], 200);
         } catch (\Exception $e) {
-            Log::error("myBookings Error: " . $e->getMessage() . " on line " . $e->getLine());
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error("Vendor fetch failed: " . $e->getMessage() . " on line " . $e->getLine());
+            return response()->json(['error' => 'Vendor fetch failed: ' . $e->getMessage()], 500);
         }
     }
 
@@ -94,7 +94,7 @@ class VendorController extends Controller
             $vendorServiceIds = Vendor::where('user_id', Auth::id())->pluck('id')->toArray();
             
             $isAssociated = in_array($booking->service_id, $vendorServiceIds) || 
-                            DB::table('booking_service')->where('booking_id', $id)->whereIn('vendor_id', $vendorServiceIds)->exists();
+                            DB::table('booking_service')->where('booking_id', $id)->whereIn('service_id', $vendorServiceIds)->exists();
 
             if (!$isAssociated) {
                 return response()->json(['error' => 'Unauthorized'], 403);
