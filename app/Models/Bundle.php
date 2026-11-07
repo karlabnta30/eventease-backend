@@ -14,6 +14,8 @@ class Bundle extends Model
         'bundle_name',
         'description',
         'price',
+        'min_pax',
+        'max_pax',
     ];
 
     public function vendor()
