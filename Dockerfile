@@ -1,4 +1,4 @@
-# FORCE_REBUILD_CACHE_FIX_v2
+# FORCE_REBUILD_CACHE_FIX_v3
 FROM php:8.2-apache
 
 # Install system dependencies and PHP extensions needed for Laravel & MySQL
@@ -25,8 +25,9 @@ WORKDIR /var/www/html
 # Copy all project files first so artisan and everything else exist
 COPY . .
 
-# Install project dependencies
-RUN composer install --no-dev --optimize-autoloader
+# Install project dependencies with increased process timeout and prefer-dist to avoid timeouts
+RUN composer config --global process-timeout 2000 \
+    && composer install --no-dev --optimize-autoloader --prefer-dist
 
 # Set permissions for Laravel storage and cache
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
