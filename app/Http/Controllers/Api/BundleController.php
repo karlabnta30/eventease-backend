@@ -46,23 +46,17 @@ class BundleController extends Controller
                 return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // Hanapin ang vendor at beripikahin kung talagang existing sa database table
-            $vendor = null;
-            $existingVendor = Vendor::where('user_id', $user->id)->first();
-
-            if ($existingVendor && Vendor::where('id', $existingVendor->id)->exists()) {
-                $vendor = $existingVendor;
-            } else {
-                // Kung wala o invalid ang lumang ID, gumawa ng bagong sariwang vendor record para sa user na ito
-                $vendor = Vendor::create([
-                    'user_id'        => $user->id,
-                    'business_name'  => $user->name ?? 'Vendor Enterprise',
+            // Gamitin ang updateOrCreate para sigurado na laging valid at bago ang vendor record ng user na ito
+            $vendor = Vendor::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'business_name'  => $user->name ?? 'Vendor Hub',
                     'category'       => 'General',
                     'location'       => 'Metro Manila',
                     'starting_price' => 0,
                     'is_available'   => true,
-                ]);
-            }
+                ]
+            );
 
             // I-save ang Bundle gamit ang bagong kuha at sigurado-ng-valid na vendor id
             $bundle = Bundle::create([
