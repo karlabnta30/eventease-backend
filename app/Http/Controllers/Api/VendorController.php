@@ -27,7 +27,7 @@ class VendorController extends Controller
     }
 
     /**
-     * Fetch bookings specifically for this vendor and calculate revenue correctly per vendor service
+     * Fetch bookings specifically for this vendor and calculate revenue safely
      */
     public function myBookings()
     {
@@ -46,23 +46,27 @@ class VendorController extends Controller
                 )
                 ->unique();
 
-            // Kunin ang mismong mga booking kasama ang user at services
+            // Kunin ang mismong mga booking kasama ang user at services nang walang pivot price conflict
             $bookings = Booking::whereIn('id', $bookingIds)
                 ->with(['user', 'services'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Kalkulahin ang total earnings gamit ang service_id sa booking_service table
-            $totalEarnings = DB::table('booking_service')
-                ->join('bookings', 'booking_service.booking_id', '=', 'bookings.id')
-                ->whereIn('booking_service.service_id', $vendorServiceIds)
-                ->whereIn('bookings.payment_status', ['downpayment_paid', 'fully_paid', 'completed', 'paid'])
-                ->sum(
-                    DB::raw('CASE 
-                        WHEN bookings.payment_status IN ("fully_paid", "completed", "paid") THEN booking_service.price 
-                        ELSE (booking_service.price * 0.50) 
-                    END')
-                );
+            // Kalkulahin ang total earnings gamit ang budget ng booking o service price
+            $totalEarnings = Booking::whereIn('id', $bookingIds)
+                ->whereIn('payment_status', ['downpayment_paid', 'fully_paid', 'completed', 'paid'])
+                ->get()
+                ->sum(function($booking) {
+                    $budget = (float) $booking->budget;
+                    $status = strtolower(trim($booking->payment_status));
+                    
+                    // Kung fully paid, buong budget; kung downpayment pa lang, 50%
+                    if (in_array($status, ['fully_paid', 'completed', 'paid'])) {
+                        return $budget;
+                    } else {
+                        return $budget * 0.50;
+                    }
+                });
 
             $pendingCount = Booking::whereIn('id', $bookingIds)
                 ->where('status', 'pending')
