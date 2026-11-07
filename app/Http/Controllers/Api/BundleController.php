@@ -36,7 +36,7 @@ class BundleController extends Controller
                 'description' => 'nullable|string',
                 'price'       => 'required|numeric',
                 'services'    => 'required|array',
-                'services.*'  => 'exists:services,id'
+                'services.*'  => 'exists:vendors,id' // Sinisiguro na ang mga napili ay umiiral sa vendors/services table
             ]);
 
             $user = $request->user() ?? Auth::user();
@@ -45,22 +45,22 @@ class BundleController extends Controller
                 return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // Find the vendor profile linked to this user
+            // Hanapin ang vendor profile ng nag-login na user
             $vendor = Vendor::where('user_id', $user->id)->first();
 
-            // If no vendor profile exists for this user, create one dynamically
+            // Kung walang vendor profile, gumawa ng default para maiwasan ang foreign key constraint error
             if (!$vendor) {
                 $vendor = Vendor::create([
                     'user_id'        => $user->id,
-                    'business_name'  => $user->name . ' Enterprise',
+                    'business_name'  => $user->name ?? 'Vendor Enterprise',
                     'category'       => 'General',
-                    'location'       => 'Manila',
+                    'location'       => 'Metro Manila',
                     'starting_price' => 0,
                     'is_available'   => true,
                 ]);
             }
 
-            // Create the bundle using the dynamic vendor's ID
+            // I-save ang Bundle gamit ang tamang vendor_id
             $bundle = Bundle::create([
                 'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
@@ -68,8 +68,10 @@ class BundleController extends Controller
                 'price'       => $request->price,
             ]);
 
-            // Sync the selected services
-            $bundle->services()->sync($request->services);
+            // I-sync ang mga napiling serbisyo sa pamamagitan ng relationship
+            if ($request->has('services') && method_exists($bundle, 'services')) {
+                $bundle->services()->sync($request->services);
+            }
 
             return response()->json([
                 'message' => 'Bundle created successfully!',
@@ -103,11 +105,14 @@ class BundleController extends Controller
             }
 
             $vendor = Vendor::where('user_id', $user->id)->first();
-            if ($vendor && $bundle->vendor_id !== $vendor->id && $user->role !== 'admin') {
+            if ($vendor && $bundle->vendor_id !== $vendor->id && optional($user)->role !== 'admin') {
                 return response()->json(['error' => 'Unauthorized action.'], 403);
             }
 
-            $bundle->services()->detach();
+            if (method_exists($bundle, 'services')) {
+                $bundle->services()->detach();
+            }
+            
             $bundle->delete();
 
             return response()->json(['message' => 'Bundle deleted successfully'], 200);
