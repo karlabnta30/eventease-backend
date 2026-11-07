@@ -31,7 +31,6 @@ class BundleController extends Controller
     public function store(Request $request)
     {
         try {
-            // Binago ang validation para tanggapin ang kahit anong ID na pinasa mula sa frontend
             $request->validate([
                 'bundle_name' => 'required|string',
                 'description' => 'nullable|string',
@@ -39,7 +38,6 @@ class BundleController extends Controller
                 'min_pax'     => 'nullable|integer',
                 'max_pax'     => 'nullable|integer',
                 'services'    => 'required|array',
-                'services.*'  => 'integer' // Tinanggal ang exists check para maiwasan ang 422 error
             ]);
 
             $user = $request->user() ?? Auth::user();
@@ -48,10 +46,11 @@ class BundleController extends Controller
                 return response()->json(['error' => 'Unauthorized user session.'], 401);
             }
 
-            // Hanapin ang vendor profile ng nag-login na user
+            // Hanapin o likhain ang tamang vendor na sigurado nating umiiral sa database
             $vendor = Vendor::where('user_id', $user->id)->first();
 
             if (!$vendor) {
+                // Kung wala pang vendor profile, gumawa ng bago
                 $vendor = Vendor::create([
                     'user_id'        => $user->id,
                     'business_name'  => $user->name ?? 'Vendor Enterprise',
@@ -60,9 +59,22 @@ class BundleController extends Controller
                     'starting_price' => 0,
                     'is_available'   => true,
                 ]);
+            } else {
+                // Sisiguruhing ang vendor ID na gagamitin ay valid at existing
+                $existsInDb = Vendor::where('id', $vendor->id)->exists();
+                if (!$existsInDb) {
+                    $vendor = Vendor::create([
+                        'user_id'        => $user->id,
+                        'business_name'  => $user->name ?? 'Vendor Enterprise',
+                        'category'       => 'General',
+                        'location'       => 'Metro Manila',
+                        'starting_price' => 0,
+                        'is_available'   => true,
+                    ]);
+                }
             }
 
-            // I-save ang Bundle
+            // I-save ang Bundle gamit ang beripikadong vendor ID
             $bundle = Bundle::create([
                 'vendor_id'   => $vendor->id,
                 'bundle_name' => $request->bundle_name,
@@ -72,9 +84,11 @@ class BundleController extends Controller
                 'max_pax'     => $request->max_pax ?? 100,
             ]);
 
-            // I-sync ang mga napiling serbisyo
+            // I-sync ang mga napiling serbisyo kung mayroon
             if ($request->has('services') && method_exists($bundle, 'services')) {
-                $bundle->services()->sync($request->services);
+                // Salain muna para matiyak na integer IDs ang isi-sync
+                $serviceIds = array_map('intval', $request->services);
+                $bundle->services()->sync($serviceIds);
             }
 
             return response()->json([
